@@ -54,8 +54,10 @@ export component SftpPanel inherits Rectangle {
     in property <string>  status: @tr("SFTP not connected");
     in property <bool>    loading: false;
     in property <[SftpTreeNode]> tree-nodes: [];
+    in property <bool> collapsed: false;   // when true only the toolbar shows
 
     // --- Callbacks ---------------------------------------------------------
+    callback toggle-collapsed();    // minimise / restore the panel
     callback navigate(string);
     callback download(string);
     callback upload-clicked(string);
@@ -125,6 +127,21 @@ export component SftpPanel inherits Rectangle {
                     }
                     Text { text: "\u{E5D5}"; font-family: "Material Icons";
                            color: Theme.text-secondary; font-size: Theme.fs-sm;
+                           horizontal-alignment: center; vertical-alignment: center; }
+                }
+
+                // Minimise / restore the SFTP panel (#41).
+                Rectangle {
+                    width: 24px; height: 22px;
+                    border-radius: Theme.radius-sm;
+                    background: min-ta.has-hover ? Theme.bg-hover : transparent;
+                    min-ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.toggle-collapsed(); }
+                    }
+                    // expand_less (▲, restore) when collapsed, expand_more (▼) otherwise.
+                    Text { text: root.collapsed ? "\u{E5CE}" : "\u{E5CF}"; font-family: "Material Icons";
+                           color: Theme.text-secondary; font-size: Theme.fs-md;
                            horizontal-alignment: center; vertical-alignment: center; }
                 }
             }

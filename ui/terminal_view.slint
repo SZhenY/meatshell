@@ -87,6 +87,8 @@ export component TerminalView inherits Rectangle {
     in property <[SftpTreeNode]> sftp-tree-nodes: [];
 
     in-out property <length> sftp-panel-height: 220px;
+    property <length> sftp-saved-height: 220px;   // height to restore on un-collapse
+    property <bool>   sftp-collapsed: false;       // SFTP panel minimised (toolbar only)
 
     callback send-key(string, bool, bool, bool);
     callback terminal-resize(float, float);
@@ -333,12 +335,18 @@ export component TerminalView inherits Rectangle {
                                         floor(self.mouse-y / root.cell-h),
                                         floor(self.mouse-x / root.cell-w));
                                     if (!root.is-alt-screen) {
-                                        // vy ∈ [0, flickable.height] = where the mouse
-                                        // is inside the visible window.
+                                        // vy = mouse position inside the visible window.
+                                        // Only auto-scroll once the drag actually leaves
+                                        // the top/bottom edge — selecting *within* the
+                                        // visible area must never make the view jump or
+                                        // the selection snap to an edge row (#41). Slint
+                                        // captures the pointer while pressed, so dragging
+                                        // past the edge still scrolls to extend across
+                                        // more than one screen.
                                         root.vis-y = self.mouse-y + 8px + flickable.viewport-y;
-                                        if (root.vis-y < root.cell-h) {
+                                        if (root.vis-y < 0) {
                                             root.autoscroll-dir = -1;       // past top → older
-                                        } else if (root.vis-y > flickable.height - root.cell-h) {
+                                        } else if (root.vis-y > flickable.height) {
                                             root.autoscroll-dir = 1;        // past bottom → newer
                                         } else {
                                             root.autoscroll-dir = 0;
@@ -626,6 +634,7 @@ export component TerminalView inherits Rectangle {
 
                 moved => {
                     if (root.sftp-dragging) {
+                        root.sftp-collapsed = false; // dragging the handle un-collapses
                         root.sftp-panel-height = clamp(
                             root.sftp-panel-height + root.drag-start-mouse-y - self.mouse-y,
                             60px,
@@ -639,11 +648,24 @@ export component TerminalView inherits Rectangle {
         // --- SFTP panel -----------------------------------------------------
         SftpPanel {
             height: root.sftp-panel-height;
+            collapsed:     root.sftp-collapsed;
             current-path:  root.sftp-path;
             entries:       root.sftp-entries;
             status:        root.sftp-status;
             loading:       root.sftp-loading;
             tree-nodes:    root.sftp-tree-nodes;
+            toggle-collapsed => {
+                if (root.sftp-collapsed) {
+                    // Restore to the saved height.
+                    root.sftp-panel-height = root.sftp-saved-height;
+                    root.sftp-collapsed = false;
+                } else {
+                    // Minimise: remember the height, shrink to the toolbar (30px).
+                    root.sftp-saved-height = root.sftp-panel-height;
+                    root.sftp-panel-height = 30px;
+                    root.sftp-collapsed = true;
+                }
+            }
             navigate(path)      => { root.sftp-navigate(path); }
             download(path)      => { root.sftp-download(path); }
             upload-clicked(dir) => { root.sftp-upload-clicked(dir); }
