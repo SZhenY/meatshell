@@ -47,13 +47,6 @@ pub enum SftpCommand {
     Download { remote: String, local_dir: String },
     /// Upload a local file into a remote directory.
     Upload { local: String, remote_dir: String },
-    /// Upload a local file into `remote_dir` if it exists, else into
-    /// `fallback_dir` — used by session-sync uploads to the other sessions.
-    UploadResolve {
-        local: String,
-        remote_dir: String,
-        fallback_dir: String,
-    },
     /// Delete a remote file (falls back to removing an empty directory).
     Delete(String),
     /// Download a file to a temp dir and open it with the OS default app
@@ -96,13 +89,6 @@ impl SftpHandle {
         let _ = self
             .commands
             .send(SftpCommand::Upload { local, remote_dir });
-    }
-    pub fn upload_resolve(&self, local: String, remote_dir: String, fallback_dir: String) {
-        let _ = self.commands.send(SftpCommand::UploadResolve {
-            local,
-            remote_dir,
-            fallback_dir,
-        });
     }
     pub fn toggle_tree_node(&self, path: String) {
         let _ = self.commands.send(SftpCommand::ToggleTreeNode(path));
@@ -485,26 +471,6 @@ async fn run_sftp(
                         }
                     }
                 }
-            }
-
-            SftpCommand::UploadResolve {
-                local,
-                remote_dir,
-                fallback_dir,
-            } => {
-                // Session-sync upload: use the same path if it exists on this
-                // session, otherwise fall back to this panel's current dir.
-                let same_exists = sftp
-                    .metadata(&remote_dir)
-                    .await
-                    .ok()
-                    .map(|m| (m.permissions.unwrap_or(0) & 0o170_000) == 0o040_000)
-                    .unwrap_or(false);
-                let target = if same_exists { remote_dir } else { fallback_dir };
-                let _ = self_tx.send(SftpCommand::Upload {
-                    local,
-                    remote_dir: target,
-                });
             }
 
             SftpCommand::Delete(path) => {

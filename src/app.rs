@@ -2583,8 +2583,10 @@ fn wire_sftp_callbacks(
                 let sftp_handles = sftp_handles.clone();
                 // Session-sync upload (#sync): when both the sync toggle and the
                 // "sync upload" setting are on, mirror the upload to every other
-                // online session — same path, else that panel's current dir.
-                // Gather the targets on the UI thread (Slint models aren't Send).
+                // online session — each into *that session's own* current SFTP
+                // directory (paths differ between sessions, e.g. /home/jeff vs
+                // /home/root, so the active session's path can't be reused).
+                // Gather targets on the UI thread (Slint models aren't Send).
                 let sync_targets: Vec<(String, String)> = weak
                     .upgrade()
                     .filter(|w| w.get_sync_input() && w.get_sync_upload_enabled())
@@ -2595,13 +2597,8 @@ fn wire_sftp_callbacks(
                             .iter()
                             .flat_map(|h| h.keys())
                             .filter(|id| *id != &tab_id)
-                            .map(|id| {
-                                let cur = paths
-                                    .get(id)
-                                    .cloned()
-                                    .unwrap_or_else(|| "/".to_string());
-                                (id.clone(), cur)
-                            })
+                            .filter_map(|id| paths.get(id).map(|dir| (id.clone(), dir.clone())))
+                            .filter(|(_, dir)| !dir.is_empty())
                             .collect()
                     })
                     .unwrap_or_default();
@@ -2633,15 +2630,12 @@ fn wire_sftp_callbacks(
                                 h.upload(local.clone(), remote_dir.clone());
                             }
                         }
-                        // Mirror to the other online sessions.
-                        for (id, fallback) in &sync_targets {
+                        // Mirror to the other online sessions, each into its own
+                        // current SFTP directory.
+                        for (id, dir) in &sync_targets {
                             if let Some(h) = handles.get(id) {
                                 for local in &locals {
-                                    h.upload_resolve(
-                                        local.clone(),
-                                        remote_dir.clone(),
-                                        fallback.clone(),
-                                    );
+                                    h.upload(local.clone(), dir.clone());
                                 }
                             }
                         }
