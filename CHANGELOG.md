@@ -5,6 +5,18 @@ All notable changes are documented here. 本文件记录所有重要变更。
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-06-14
+
+### Fixed / 修复
+
+- **Wide CJK glyphs are grid-aligned in the terminal.** With a Chinese path, the
+  trailing `/` after `ll`, the cursor after `cd`, and the prompt `$` no longer
+  overlap or drift away from the last CJK character — each wide character now
+  occupies exactly its two terminal cells.
+  **终端里的中文(宽字符)对齐到网格。** 中文路径下,`ll` 后目录名的 `/`、`cd`
+  之后的光标、提示符 `$` 不再与中文末字重叠或拉开很远——每个宽字符现在正好
+  占它的两个终端格。
+
 ## [0.4.1] - 2026-06-14
 
 ### Added / 新增
