@@ -1719,6 +1719,7 @@ fn wire_session_callbacks(
                 sftp_tree_nodes: ModelRc::from(
                     std::rc::Rc::new(VecModel::<SftpTreeNode>::default()),
                 ),
+                sftp_selected_count: 0,
             });
             // Create vt100 parser for this tab (default 24×80; resized on first
             // terminal-resize callback). 5000-line scrollback is stored for
@@ -2046,6 +2047,52 @@ fn forward_model(forwards: &[crate::config::PortForward]) -> ModelRc<PortFwd> {
         })
         .collect();
     ModelRc::from(Rc::new(VecModel::from(rows)))
+}
+
+/// Collect the full paths of the checked SFTP entries for a tab (#100).
+fn collect_sftp_selected(terminals: &VecModel<TerminalState>, tab_id: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    for ti in 0..terminals.row_count() {
+        let Some(row) = terminals.row_data(ti) else { continue };
+        if row.id.as_str() != tab_id {
+            continue;
+        }
+        if let Some(em) = row.sftp_entries.as_any().downcast_ref::<VecModel<SftpEntry>>() {
+            for ei in 0..em.row_count() {
+                if let Some(e) = em.row_data(ei) {
+                    if e.selected {
+                        paths.push(e.full_path.to_string());
+                    }
+                }
+            }
+        }
+        break;
+    }
+    paths
+}
+
+/// Uncheck every SFTP entry for a tab and reset its selected-count (#100).
+fn clear_sftp_selection(terminals: &VecModel<TerminalState>, tab_id: &str) {
+    for ti in 0..terminals.row_count() {
+        let Some(row) = terminals.row_data(ti) else { continue };
+        if row.id.as_str() != tab_id {
+            continue;
+        }
+        if let Some(em) = row.sftp_entries.as_any().downcast_ref::<VecModel<SftpEntry>>() {
+            for ei in 0..em.row_count() {
+                if let Some(mut e) = em.row_data(ei) {
+                    if e.selected {
+                        e.selected = false;
+                        em.set_row_data(ei, e);
+                    }
+                }
+            }
+        }
+        let mut r = row.clone();
+        r.sftp_selected_count = 0;
+        terminals.set_row_data(ti, r);
+        break;
+    }
 }
 
 /// Build the command-history model in storage order (oldest first, newest
@@ -2449,6 +2496,7 @@ fn apply_session_event_to_window(
                     },
                     modified: format_mtime(e.modified).into(),
                     mode: (e.mode & 0o7777) as i32,
+                    selected: false,
                 })
                 .collect();
             let model = ModelRc::from(
@@ -3206,6 +3254,111 @@ fn wire_sftp_callbacks(
                     h.delete(path.to_string());
                 }
             }
+        });
+    }
+
+    // SFTP multi-select: toggle a row's checkbox + recount (#100).
+    {
+        let weak = window.as_weak();
+        window.on_sftp_toggle_select(move |tab_id: SharedString, idx: i32| {
+            let Some(w) = weak.upgrade() else { return };
+            let terminals = w.get_terminals();
+            let Some(tm) = terminals.as_any().downcast_ref::<VecModel<TerminalState>>() else {
+                return;
+            };
+            for ti in 0..tm.row_count() {
+                let Some(row) = tm.row_data(ti) else { continue };
+                if row.id.as_str() != tab_id.as_str() {
+                    continue;
+                }
+                if let Some(em) = row.sftp_entries.as_any().downcast_ref::<VecModel<SftpEntry>>() {
+                    let i = idx as usize;
+                    if let Some(mut e) = em.row_data(i) {
+                        e.selected = !e.selected;
+                        em.set_row_data(i, e);
+                    }
+                    let mut n = 0;
+                    for ei in 0..em.row_count() {
+                        if em.row_data(ei).map(|x| x.selected).unwrap_or(false) {
+                            n += 1;
+                        }
+                    }
+                    let mut r = row.clone();
+                    r.sftp_selected_count = n;
+                    tm.set_row_data(ti, r);
+                }
+                break;
+            }
+        });
+    }
+    // SFTP multi-select: download all checked entries into one folder (#100).
+    {
+        let sftp_handles = sftp_handles.clone();
+        let weak = window.as_weak();
+        window.on_sftp_download_selected(move |tab_id: SharedString| {
+            let Some(w) = weak.upgrade() else { return };
+            let terminals = w.get_terminals();
+            let Some(tm) = terminals.as_any().downcast_ref::<VecModel<TerminalState>>() else {
+                return;
+            };
+            let paths = collect_sftp_selected(tm, tab_id.as_str());
+            if paths.is_empty() {
+                return;
+            }
+            let preset = w.get_download_dir().to_string();
+            let always_ask = w.get_download_always_ask();
+            if !always_ask && !preset.is_empty() {
+                if let Ok(handles) = sftp_handles.lock() {
+                    if let Some(h) = handles.get(tab_id.as_str()) {
+                        for p in &paths {
+                            h.download(p.clone(), preset.clone());
+                        }
+                    }
+                }
+                w.set_download_open(true);
+            } else {
+                let sftp_handles = sftp_handles.clone();
+                let weak2 = weak.clone();
+                let tab = tab_id.to_string();
+                std::thread::spawn(move || {
+                    if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                        let dir = dir.to_string_lossy().to_string();
+                        if let Ok(handles) = sftp_handles.lock() {
+                            if let Some(h) = handles.get(&tab) {
+                                for p in &paths {
+                                    h.download(p.clone(), dir.clone());
+                                }
+                            }
+                        }
+                        let _ = weak2.upgrade_in_event_loop(|w| w.set_download_open(true));
+                    }
+                });
+            }
+            clear_sftp_selection(tm, tab_id.as_str());
+        });
+    }
+    // SFTP multi-select: delete all checked entries (confirmed in the UI) (#100).
+    {
+        let sftp_handles = sftp_handles.clone();
+        let weak = window.as_weak();
+        window.on_sftp_delete_selected(move |tab_id: SharedString| {
+            let Some(w) = weak.upgrade() else { return };
+            let terminals = w.get_terminals();
+            let Some(tm) = terminals.as_any().downcast_ref::<VecModel<TerminalState>>() else {
+                return;
+            };
+            let paths = collect_sftp_selected(tm, tab_id.as_str());
+            if paths.is_empty() {
+                return;
+            }
+            if let Ok(handles) = sftp_handles.lock() {
+                if let Some(h) = handles.get(tab_id.as_str()) {
+                    for p in &paths {
+                        h.delete(p.clone());
+                    }
+                }
+            }
+            clear_sftp_selection(tm, tab_id.as_str());
         });
     }
 

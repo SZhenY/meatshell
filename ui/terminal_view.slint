@@ -125,6 +125,10 @@ export component TerminalView inherits Rectangle {
     callback sftp-refresh(string);
     callback sftp-tree-expand(string);
     callback sftp-delete(string);
+    in property <int> sftp-selected-count;          // checked-entry count (#100)
+    callback sftp-toggle-select(int);               // toggle a row's checkbox (#100)
+    callback sftp-download-selected();              // download checked entries (#100)
+    callback sftp-delete-selected();                // delete checked entries (#100)
     callback sftp-view(string);
     callback sftp-edit(string);
     callback sftp-open-external(string);
@@ -1107,6 +1111,7 @@ export component TerminalView inherits Rectangle {
             status:        root.sftp-status;
             loading:       root.sftp-loading;
             tree-nodes:    root.sftp-tree-nodes;
+            selected-count: root.sftp-selected-count;
             toggle-collapsed => {
                 if (root.sftp-collapsed) {
                     // Restore to the saved height.
@@ -1125,6 +1130,9 @@ export component TerminalView inherits Rectangle {
             refresh(path)       => { root.sftp-refresh(path); }
             tree-expand(path)   => { root.sftp-tree-expand(path); }
             delete(path)        => { root.sftp-delete(path); }
+            toggle-select(i)    => { root.sftp-toggle-select(i); }
+            download-selected() => { root.sftp-download-selected(); }
+            delete-selected()   => { root.sftp-delete-selected(); }
             view(path)          => { root.sftp-view(path); }
             edit(path)          => { root.sftp-edit(path); }
             open-external(path) => { root.sftp-open-external(path); }

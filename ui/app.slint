@@ -70,6 +70,7 @@ export struct TerminalState {
     sftp-status: string,
     sftp-loading: bool,
     sftp-tree-nodes: [SftpTreeNode],
+    sftp-selected-count: int,   // checked entries in the SFTP panel (#100)
 }
 
 // A 26×26 top-bar icon button with a hover tooltip (right-aligned so it never
@@ -414,6 +415,7 @@ export component AppWindow inherits Window {
 
     // Delete-confirmation modal state (#28).
     in-out property <bool> confirm-delete-open: false;
+    in-out property <bool> confirm-delete-batch: false;   // delete checked entries (#100)
     in-out property <string> confirm-delete-tab;
     in-out property <string> confirm-delete-path;
 
@@ -463,6 +465,9 @@ export component AppWindow inherits Window {
     // Toggle expand/collapse of a tree node (also navigates to that directory).
     callback sftp-tree-expand(string /* tab-id */, string /* path */);
     callback sftp-delete(string /* tab-id */, string /* path */);
+    callback sftp-toggle-select(string /* tab-id */, int /* row */);   // (#100)
+    callback sftp-download-selected(string /* tab-id */);              // (#100)
+    callback sftp-delete-selected(string /* tab-id */);               // (#100)
     callback sftp-view(string /* tab-id */, string /* path */);
     callback sftp-edit(string /* tab-id */, string /* path */);
     callback sftp-open-external(string /* tab-id */, string /* path */);
@@ -689,6 +694,7 @@ export component AppWindow inherits Window {
                     sftp-status: term.sftp-status;
                     sftp-loading: term.sftp-loading;
                     sftp-tree-nodes: term.sftp-tree-nodes;
+                    sftp-selected-count: term.sftp-selected-count;
                     quick-commands: root.quick-commands;
                     command-history: root.command-history;
                     history-view: root.history-view;
@@ -709,6 +715,16 @@ export component AppWindow inherits Window {
                     sftp-upload-clicked(dir, folder) => { root.sftp-upload-clicked(term.id, dir, folder); }
                     sftp-refresh(path) => { root.sftp-refresh(term.id, path); }
                     sftp-tree-expand(path) => { root.sftp-tree-expand(term.id, path); }
+                    sftp-toggle-select(i) => { root.sftp-toggle-select(term.id, i); }
+                    sftp-download-selected() => { root.sftp-download-selected(term.id); }
+                    // Confirm before deleting the checked entries (#100), reusing
+                    // the delete-confirm dialog in batch mode.
+                    sftp-delete-selected() => {
+                        root.confirm-delete-tab = term.id;
+                        root.confirm-delete-batch = true;
+                        root.confirm-delete-path = root.lang-en ? "the selected items" : "选中的项目";
+                        root.confirm-delete-open = true;
+                    }
                     // Gate delete behind an in-app confirmation (#28): stash the
                     // target and open the modal; the real delete fires on confirm.
                     sftp-delete(path) => {
@@ -2590,14 +2606,22 @@ export component AppWindow inherits Window {
         height: parent.height;
         is-open <=> root.confirm-delete-open;
         title: @tr("Confirm delete");
-        message: @tr("Delete this item? This cannot be undone.");
+        message: root.confirm-delete-batch
+            ? (root.lang-en ? "Delete the checked items? This cannot be undone."
+                            : "删除选中的多个项目?此操作不可撤销。")
+            : @tr("Delete this item? This cannot be undone.");
         detail: root.confirm-delete-path;
         confirm-label: @tr("Delete");
         confirm => {
-            root.sftp-delete(root.confirm-delete-tab, root.confirm-delete-path);
+            if (root.confirm-delete-batch) {
+                root.sftp-delete-selected(root.confirm-delete-tab);
+                root.confirm-delete-batch = false;
+            } else {
+                root.sftp-delete(root.confirm-delete-tab, root.confirm-delete-path);
+            }
             root.confirm-delete-open = false;
         }
-        cancel => { root.confirm-delete-open = false; }
+        cancel => { root.confirm-delete-batch = false; root.confirm-delete-open = false; }
     }
 
     // Host-key confirmation (#109-5). Reuses the confirm-dialog card; the
