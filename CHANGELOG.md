@@ -5,6 +5,29 @@ All notable changes are documented here. 本文件记录所有重要变更。
 
 ## [Unreleased]
 
+## [0.4.12] - 2026-06-20
+
+### Fixed / 修复
+
+- **macOS 26 blank text — switch the default CJK UI font to one femtovg can render
+  (#129, #108).** Root cause finally pinned: on some macOS 26 machines femtovg
+  cannot rasterize the *modern* system CJK fonts (PingFang SC, Hiragino) — fontdb
+  finds them but every glyph comes out blank — while the older Heiti/STHeiti/Songti
+  faces render perfectly (verified per-font on an M2 / macOS 26). It was never the
+  renderer (0.4.11's femtovg revert alone didn't help) nor font *loading* (fontdb
+  loaded 900+ faces). The UI now prefers the reliably-rendering "Heiti SC" (a clean
+  sans-serif that ships on every macOS), with STHeiti/Songti as further fallbacks
+  and the embedded "Meatshell Mono" as a last resort so the window is never blank.
+  A `MEATSHELL_UI_FONT="<family>"` env var can force any family without a rebuild.
+  **修复 macOS 26 文字全白——默认中文界面字体改用 femtovg 能渲染的字体 (#129, #108)。**
+  根因最终定位:部分 macOS 26 机器上 femtovg 无法栅格化*新版*系统中文字体(PingFang
+  SC、Hiragino)——fontdb 能找到它们,但每个字形都画成空白;而老字体
+  Heiti/STHeiti/Songti 渲染完全正常(已在 M2 / macOS 26 上逐字体实测)。既不是渲染器
+  (0.4.11 单独退回 femtovg 没用),也不是字体*加载*(fontdb 加载了 900+ 个 face)。
+  界面现在优先用稳定渲染的「Heiti SC」(所有 macOS 自带的干净黑体),STHeiti/Songti
+  作为后备,内置「Meatshell Mono」兜底,确保窗口永不全白。可用环境变量
+  `MEATSHELL_UI_FONT="<字体名>"` 免重编强制指定任意字体。
+
 ## [0.4.11] - 2026-06-20
 
 ### Fixed / 修复
