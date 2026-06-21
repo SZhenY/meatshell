@@ -357,14 +357,26 @@ pub fn run() -> Result<()> {
         let collapse_sftp = s.collapse_sftp_default();
         window.set_collapse_sidebar_default(collapse_sidebar);
         window.set_collapse_sftp_default(collapse_sftp);
+        // Restore the persisted panel docking layout (#dock).
         window.set_sidebar_width(s.sidebar_width());
+        window.set_sidebar_height(s.sidebar_height());
+        window.set_sidebar_dock(s.sidebar_dock().into());
+        window.set_sftp_panel_width(s.sftp_panel_width());
+        window.set_sftp_panel_height(s.sftp_panel_height());
+        window.set_sftp_dock(s.sftp_dock().into());
         if collapse_sidebar {
             window.set_sidebar_collapsed(true);
         }
         if collapse_sftp {
             window.set_sftp_collapsed(true);
-            window.set_sftp_saved_height(220.0);
-            window.set_sftp_panel_height(30.0);
+            window.set_sftp_saved_height(s.sftp_panel_height());
+        }
+        // Restore the user's preferred window size, if any (#dock).
+        let (ww, wh) = s.window_size();
+        if ww > 0.0 && wh > 0.0 {
+            window
+                .window()
+                .set_size(slint::LogicalSize::new(ww, wh));
         }
     }
     {
@@ -853,6 +865,7 @@ pub fn run() -> Result<()> {
         let weak = window.as_weak();
         let sh = sftp_handles.clone();
         let close_handles = handles.clone();
+        let ev_store = store.clone();
         window.window().on_winit_window_event(move |_w, event| {
             match event {
                 WEvent::DroppedFile(path) => {
@@ -882,6 +895,10 @@ pub fn run() -> Result<()> {
                         }
                         return EventResult::PreventDefault;
                     }
+                    // No sessions → the window is about to close; persist layout.
+                    if let Some(win) = weak.upgrade() {
+                        save_layout(&win, &ev_store);
+                    }
                 }
                 _ => {}
             }
@@ -889,9 +906,16 @@ pub fn run() -> Result<()> {
         });
     }
     // Confirm-close dialog "Close" → actually quit the event loop (#88).
-    window.on_confirm_close_yes(|| {
-        let _ = slint::quit_event_loop();
-    });
+    {
+        let weak = window.as_weak();
+        let cc_store = store.clone();
+        window.on_confirm_close_yes(move || {
+            if let Some(w) = weak.upgrade() {
+                save_layout(&w, &cc_store);
+            }
+            let _ = slint::quit_event_loop();
+        });
+    }
 
     // --- Custom title-bar window controls (#119) --------------------------
     {
@@ -920,10 +944,12 @@ pub fn run() -> Result<()> {
     {
         let weak = window.as_weak();
         let close_handles = handles.clone();
+        let wc_store = store.clone();
         window.on_win_close(move || {
             if let Some(w) = weak.upgrade() {
                 // Mirror the native-X behaviour: confirm if sessions are open.
                 if close_handles.borrow().is_empty() {
+                    save_layout(&w, &wc_store);
                     let _ = slint::quit_event_loop();
                 } else {
                     w.set_confirm_close_open(true);
@@ -2109,6 +2135,29 @@ fn sync_proc_theme(main: &AppWindow, proc: &ProcWindow) {
     proc.set_dark_mode(main.get_dark_mode());
     proc.set_ui_scale(main.get_ui_scale());
     proc.set_ui_font_family(main.get_ui_font_family());
+}
+
+/// Persist the current panel docking layout (both panels' edge + size) and the
+/// window size, so the next launch restores the user's arrangement. Called on
+/// every exit path (#dock).
+fn save_layout(win: &AppWindow, store: &Rc<RefCell<ConfigStore>>) {
+    let scale = win.window().scale_factor().max(0.01);
+    let size = win.window().size();
+    let w = size.width as f32 / scale;
+    let h = size.height as f32 / scale;
+    let mut s = store.borrow_mut();
+    s.set_sidebar_width(win.get_sidebar_width());
+    s.set_sidebar_height(win.get_sidebar_height());
+    s.set_sidebar_dock(win.get_sidebar_dock().to_string());
+    s.set_sftp_panel_width(win.get_sftp_panel_width());
+    s.set_sftp_panel_height(win.get_sftp_panel_height());
+    s.set_sftp_dock(win.get_sftp_dock().to_string());
+    // A maximized size isn't a useful "preferred" size to restore to, so only
+    // remember the windowed size.
+    if !win.get_window_maximized() && w > 200.0 && h > 200.0 {
+        s.set_window_size(w, h);
+    }
+    let _ = s.save();
 }
 
 /// Every quick-command group name (used to start with all groups collapsed, #55):

@@ -223,7 +223,12 @@ export component Welcome inherits Rectangle {
         padding: 24px;
         spacing: 20px;
 
+        // Header (title + tagline) — pinned to the top at its natural height so
+        // it can't grab the stretch space and spread apart (seen on macOS); the
+        // quick-connect card below takes all the remaining height (#dock).
         VerticalLayout {
+            vertical-stretch: 0;
+            alignment: start;
             spacing: 4px;
             Text {
                 text: "meatshell";
@@ -235,6 +240,7 @@ export component Welcome inherits Rectangle {
                 text: @tr("meatshell — a lightweight Rust + Slint SSH client by 'lil meatball'");
                 color: Theme.text-secondary;
                 font-size: Theme.fs-md;
+                wrap: no-wrap;
             }
         }
 

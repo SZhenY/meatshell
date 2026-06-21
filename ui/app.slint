@@ -237,12 +237,39 @@ export component AppWindow inherits Window {
     callback win-drag();          // start an OS window-move
     callback win-resize(int);     // start an OS resize; arg = direction code
     in-out property <bool> sidebar-collapsed: false; // left panel hidden
-    // User-draggable width of the left resource sidebar. Seeded from / persisted
-    // to config via persist-sidebar-width (fired on drag end).
+    // User-draggable size of the resource sidebar. width is used when docked
+    // left/right, height when docked top/bottom. Seeded / persisted via the
+    // persist-* callbacks (fired on drag end).
     in-out property <length> sidebar-width: 220px;
+    in-out property <length> sidebar-height: 240px;
     property <bool> sidebar-dragging;            // splitter being dragged
     property <length> sidebar-drag-start-x;      // mouse-x at drag start
+    property <length> sidebar-drag-start-y;      // mouse-y at drag start
     callback persist-sidebar-width(float /* logical px */);
+
+    // --- Panel docking (resource sidebar; SFTP follows in a later phase) ----
+    // Which window edge the resource panel is docked to: left|right|top|bottom.
+    in-out property <string> sidebar-dock: "left";
+    property <bool> sidebar-horizontal: root.sidebar-dock == "left" || root.sidebar-dock == "right";
+    // Drag-to-dock state: while a panel's header is dragged, a 4-edge snap
+    // overlay shows and `dock-target` tracks the edge under the cursor.
+    property <bool> panel-dragging;
+    property <float> drag-nx;   // cursor x within the dock area, 0..1
+    property <float> drag-ny;   // cursor y within the dock area, 0..1
+    property <string> dock-target:
+        !root.panel-dragging ? ""
+        : root.drag-nx < 0.22 ? "left"
+        : root.drag-nx > 0.78 ? "right"
+        : root.drag-ny < 0.22 ? "top"
+        : root.drag-ny > 0.78 ? "bottom"
+        : "";
+    callback persist-sidebar-dock(string);
+    // The top-right toolbar icons float over the tab row; when the sidebar docks
+    // top/right it covers that corner, so shift the icons to stay over the tabs.
+    property <length> toolbar-x-off:
+        (root.sidebar-dock == "right" && !root.sidebar-collapsed) ? root.sidebar-width + 4px : 0px;
+    property <length> toolbar-y-off:
+        (root.sidebar-dock == "top" && !root.sidebar-collapsed) ? root.sidebar-height + 4px : 0px;
     in-out property <bool> about-open: false;     // centered About dialog
     in-out property <bool> shortcuts-open: false; // centered keyboard-shortcuts dialog (#103)
     in property <string> download-dir;      // preset SFTP download folder ("" = ask)
@@ -362,6 +389,8 @@ export component AppWindow inherits Window {
     in-out property <bool> sync-upload-enabled: false;
     callback set-sync-upload-enabled(bool);
     in-out property <length> sftp-panel-height: 220px; // shared; lets Rust locate the drop zone
+    in-out property <length> sftp-panel-width: 380px;  // SFTP extent when docked left/right
+    in-out property <string> sftp-dock: "bottom";      // SFTP dock edge, shared across tabs
     callback pick-download-dir();            // open a folder picker
     callback open-download-dir();            // reveal the folder in the OS
     callback clear-transfers();              // wipe the transfer history
@@ -583,16 +612,32 @@ export component AppWindow inherits Window {
             }
         }
 
-        HorizontalLayout {
-        spacing: 0;
+        // Dock area — fills below the title bar. The resource sidebar and the
+        // central content are positioned by absolute geometry computed from
+        // `sidebar-dock`, so the sidebar can sit on any window edge (#dock).
+        dock-area := Rectangle {
+        vertical-stretch: 1;
+        // Sidebar extent along its docked axis (0 when collapsed); plus a 4px
+        // splitter unless collapsed.
+        property <length> sb-w: root.sidebar-collapsed ? 0px : root.sidebar-width;
+        property <length> sb-h: root.sidebar-collapsed ? 0px : root.sidebar-height;
+        property <length> sp: root.sidebar-collapsed ? 0px : 4px;
 
-        // Left sidebar — collapsible (width animates to 0) and drag-resizable.
+        // Left sidebar — collapsible and drag-resizable, dockable to any edge.
         // The animation is disabled while dragging so the splitter tracks the
         // cursor 1:1 instead of lagging behind.
         Sidebar {
-            width: root.sidebar-collapsed ? 0px : root.sidebar-width;
+            x: root.sidebar-dock == "right" ? parent.width - parent.sb-w
+             : 0px;
+            y: root.sidebar-dock == "bottom" ? parent.height - parent.sb-h
+             : 0px;
+            width: root.sidebar-horizontal ? parent.sb-w : parent.width;
+            height: root.sidebar-horizontal ? parent.height : parent.sb-h;
             clip: true;
-            animate width { duration: root.sidebar-dragging ? 0ms : 150ms; easing: ease-out; }
+            // Docked top/bottom → lay the resource widgets out in a row.
+            lay-horizontal: !root.sidebar-horizontal;
+            dock-edge: root.sidebar-dock;
+            animate width, height { duration: root.sidebar-dragging ? 0ms : 150ms; easing: ease-out; }
             connection-state: root.connection-state;
             conn-state: root.conn-state;
             resource-title: root.resource-title;
@@ -615,22 +660,47 @@ export component AppWindow inherits Window {
             app-version: root.app-version;
             select-net-iface(i) => { root.select-net-iface(i); }
             show-processes() => { root.open-processes(); }
+            // Drag the sidebar header to dock it to another edge. Coordinates
+            // arrive in window space; convert to dock-area-relative fractions.
+            dock-drag-move(ax, ay) => {
+                root.panel-dragging = true;
+                root.drag-nx = (ax - dock-area.absolute-position.x) / dock-area.width;
+                root.drag-ny = (ay - dock-area.absolute-position.y) / dock-area.height;
+            }
+            dock-drag-end() => {
+                if (root.dock-target != "") {
+                    root.sidebar-dock = root.dock-target;
+                    root.persist-sidebar-dock(root.sidebar-dock);
+                }
+                root.panel-dragging = false;
+            }
+            toggle-collapse() => { root.sidebar-collapsed = !root.sidebar-collapsed; }
         }
 
-        // Splitter — drag left/right to resize the sidebar. Hidden (zero width)
-        // while the sidebar is collapsed so it doesn't float on the edge.
+        // Splitter — drag to resize the sidebar. Orientation + which dimension it
+        // adjusts follow the dock edge. Hidden while collapsed.
         Rectangle {
-            width: root.sidebar-collapsed ? 0px : 4px;
             visible: !root.sidebar-collapsed;
+            // Horizontal docks → a vertical 4px bar at the sidebar's inner edge;
+            // vertical docks → a horizontal 4px bar.
+            x: root.sidebar-dock == "left"   ? parent.sb-w
+             : root.sidebar-dock == "right"  ? parent.width - parent.sb-w - 4px
+             : 0px;
+            y: root.sidebar-dock == "top"    ? parent.sb-h
+             : root.sidebar-dock == "bottom" ? parent.height - parent.sb-h - 4px
+             : 0px;
+            width:  root.sidebar-horizontal ? 4px : parent.width;
+            height: root.sidebar-horizontal ? parent.height : 4px;
             background: sb-split-ta.has-hover || root.sidebar-dragging
                 ? Theme.accent
                 : Theme.border-subtle;
             sb-split-ta := TouchArea {
-                mouse-cursor: ew-resize;
+                mouse-cursor: root.sidebar-horizontal ? ew-resize : ns-resize;
                 pointer-event(ev) => {
                     if (ev.kind == PointerEventKind.down) {
                         root.sidebar-dragging = true;
                         root.sidebar-drag-start-x = self.mouse-x;
+                        root.sidebar-drag-start-y = self.mouse-y;
                     } else if (ev.kind == PointerEventKind.up) {
                         root.sidebar-dragging = false;
                         root.persist-sidebar-width(root.sidebar-width / 1px);
@@ -638,41 +708,44 @@ export component AppWindow inherits Window {
                 }
                 moved => {
                     if (root.sidebar-dragging) {
-                        root.sidebar-width = clamp(
-                            root.sidebar-width + self.mouse-x - root.sidebar-drag-start-x,
-                            160px,
-                            520px
-                        );
+                        if (root.sidebar-horizontal) {
+                            // left grows with +dx, right grows with -dx.
+                            root.sidebar-width = clamp(
+                                root.sidebar-width
+                                    + (root.sidebar-dock == "right" ? -1 : 1)
+                                      * (self.mouse-x - root.sidebar-drag-start-x),
+                                160px, 520px);
+                        } else {
+                            // top grows with +dy, bottom grows with -dy.
+                            root.sidebar-height = clamp(
+                                root.sidebar-height
+                                    + (root.sidebar-dock == "bottom" ? -1 : 1)
+                                      * (self.mouse-y - root.sidebar-drag-start-y),
+                                120px, 480px);
+                        }
                     }
                 }
             }
         }
 
-        // Right side: tabs + content
-        VerticalLayout {
+        // Right side: tabs + content — positioned in the rect left after the
+        // sidebar is carved off its docked edge. Clipped so the terminal / SFTP
+        // panel can never bleed (visually or for clicks) onto a panel docked on
+        // the bottom or right (#dock).
+        central := Rectangle {
+            x: root.sidebar-dock == "left" ? parent.sb-w + parent.sp : 0px;
+            y: root.sidebar-dock == "top"  ? parent.sb-h + parent.sp : 0px;
+            width:  root.sidebar-horizontal ? parent.width - parent.sb-w - parent.sp : parent.width;
+            height: root.sidebar-horizontal ? parent.height : parent.height - parent.sb-h - parent.sp;
+            clip: true;
+            VerticalLayout {
             spacing: 0;
-            horizontal-stretch: 1;
 
             HorizontalLayout {
                 spacing: 0;
-                // Sidebar collapse / expand toggle.
-                Rectangle {
-                    width: 30px;
-                    background: sb-ta.has-hover ? Theme.bg-hover : Theme.bg-panel;
-                    sb-ta := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.sidebar-collapsed = !root.sidebar-collapsed; }
-                    }
-                    Text {
-                        // chevron_right (show panel) when collapsed, else chevron_left
-                        text: root.sidebar-collapsed ? "\u{E5CC}" : "\u{E5CB}";
-                        font-family: "Material Icons";
-                        color: Theme.text-secondary;
-                        font-size: Theme.fs-md;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
+                // The sidebar collapse toggle now lives inside the panel header
+                // (so it follows the panel to any edge); expand-when-collapsed is
+                // a floating button at the docked edge below (#dock).
                 TabBar {
                     horizontal-stretch: 1;
                     // Reserve room for the top-right toolbar icons that sit over
@@ -694,8 +767,11 @@ export component AppWindow inherits Window {
                 vertical-stretch: 1;
                 background: Theme.bg-root;
 
-                // Welcome tab
+                // Welcome tab — fill the content area explicitly (some renderers
+                // don't auto-fill, which spread the header/card apart) (#dock).
                 if root.active-tab-id == "welcome" : Welcome {
+                    width: parent.width;
+                    height: parent.height;
                     sessions: root.sessions;
                     import-hint: root.ssh-import-hint;
                     new-session => { root.new-session-clicked(); }
@@ -739,6 +815,8 @@ export component AppWindow inherits Window {
                     find-matches: term.find-matches;
                     selection: term.selection;
                     sftp-panel-height <=> root.sftp-panel-height;
+                    sftp-panel-width <=> root.sftp-panel-width;
+                    sftp-dock <=> root.sftp-dock;
                     sftp-collapsed <=> root.sftp-collapsed;
                     sftp-saved-height <=> root.sftp-saved-height;
                     sftp-path: term.sftp-path;
@@ -836,6 +914,74 @@ export component AppWindow inherits Window {
                     select-autoscroll(dir) => { root.term-select-autoscroll(term.id, dir); }
                 }
             }
+            }
+        }
+
+        // Expand button — shown only while the panel is collapsed, anchored to
+        // the edge it's docked on so it's always reachable to bring it back.
+        if root.sidebar-collapsed : Rectangle {
+            width: 24px; height: 24px;
+            x: root.sidebar-dock == "right"  ? parent.width - self.width - 2px
+             : root.sidebar-dock == "top" || root.sidebar-dock == "bottom" ? 6px
+             : 2px;
+            // Left/right docks: centre vertically so it doesn't collide with the
+            // top-right toolbar icons (settings/theme/…); top/bottom: at the edge.
+            y: root.sidebar-dock == "bottom" ? parent.height - self.height - 2px
+             : root.sidebar-dock == "top"    ? 2px
+             : (parent.height - self.height) / 2;
+            border-radius: Theme.radius-sm;
+            background: exp-ta.has-hover ? Theme.bg-hover : Theme.bg-elevated;
+            border-width: 1px;
+            border-color: Theme.border-subtle;
+            exp-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.sidebar-collapsed = false; }
+            }
+            Text {
+                text: root.sidebar-dock == "right"  ? "\u{E5CB}"   // chevron_left
+                    : root.sidebar-dock == "top"    ? "\u{E5CF}"   // expand_more
+                    : root.sidebar-dock == "bottom" ? "\u{E5CE}"   // expand_less
+                    : "\u{E5CC}";                                  // chevron_right
+                font-family: "Material Icons"; font-size: 16px; color: Theme.text-secondary;
+                horizontal-alignment: center; vertical-alignment: center;
+            }
+        }
+
+        // Drag-to-dock snap overlay — four edge zones; the one under the cursor
+        // (root.dock-target) lights up. Purely visual (no TouchArea) so the
+        // header's drag keeps receiving move events (#dock).
+        if root.panel-dragging : Rectangle {
+            x: 0; y: 0;
+            width: parent.width;
+            height: parent.height;
+            Rectangle {   // left zone
+                x: 0; y: 0; width: parent.width * 0.22; height: parent.height;
+                background: root.dock-target == "left"
+                    ? Theme.accent.with-alpha(0.35) : Theme.accent.with-alpha(0.10);
+                border-width: root.dock-target == "left" ? 2px : 0px;
+                border-color: Theme.accent;
+            }
+            Rectangle {   // right zone
+                x: parent.width * 0.78; y: 0; width: parent.width * 0.22; height: parent.height;
+                background: root.dock-target == "right"
+                    ? Theme.accent.with-alpha(0.35) : Theme.accent.with-alpha(0.10);
+                border-width: root.dock-target == "right" ? 2px : 0px;
+                border-color: Theme.accent;
+            }
+            Rectangle {   // top zone
+                x: 0; y: 0; width: parent.width; height: parent.height * 0.22;
+                background: root.dock-target == "top"
+                    ? Theme.accent.with-alpha(0.35) : Theme.accent.with-alpha(0.10);
+                border-width: root.dock-target == "top" ? 2px : 0px;
+                border-color: Theme.accent;
+            }
+            Rectangle {   // bottom zone
+                x: 0; y: parent.height * 0.78; width: parent.width; height: parent.height * 0.22;
+                background: root.dock-target == "bottom"
+                    ? Theme.accent.with-alpha(0.35) : Theme.accent.with-alpha(0.10);
+                border-width: root.dock-target == "bottom" ? 2px : 0px;
+                border-color: Theme.accent;
+            }
         }
     }
     }
@@ -844,28 +990,28 @@ export component AppWindow inherits Window {
     // of the tab row — below the custom title bar when frameless (y offset), or
     // at the very top on macOS where the native title bar is separate (#119).
     IconBtn {
-        x: root.width - 34px; y: root.custom-titlebar ? 46px : 8px;
+        x: root.width - 34px - root.toolbar-x-off; y: (root.custom-titlebar ? 46px : 8px) + root.toolbar-y-off;
         icon: "\u{E8B8}";
         tooltip: root.lang-en ? "Settings" : "设置";
         active: root.settings-open;
         clicked => { root.settings-open = !root.settings-open; root.download-open = false; root.ssh-import-hint = ""; }
     }
     IconBtn {
-        x: root.width - 64px; y: root.custom-titlebar ? 46px : 8px;
+        x: root.width - 64px - root.toolbar-x-off; y: (root.custom-titlebar ? 46px : 8px) + root.toolbar-y-off;
         icon: "\u{E2C4}";
         tooltip: root.lang-en ? "Download" : "下载";
         active: root.download-open;
         clicked => { root.download-open = !root.download-open; root.settings-open = false; }
     }
     IconBtn {
-        x: root.width - 94px; y: root.custom-titlebar ? 46px : 8px;
+        x: root.width - 94px - root.toolbar-x-off; y: (root.custom-titlebar ? 46px : 8px) + root.toolbar-y-off;
         icon: Theme.dark ? "\u{E518}" : "\u{E51C}";
         icon-color: Theme.dark ? #f5c542 : #5856d6;
         tooltip: root.lang-en ? "Toggle theme" : "切换主题";
         clicked => { root.toggle-theme(); }
     }
     IconBtn {
-        x: root.width - 124px; y: root.custom-titlebar ? 46px : 8px;
+        x: root.width - 124px - root.toolbar-x-off; y: (root.custom-titlebar ? 46px : 8px) + root.toolbar-y-off;
         icon: "\u{E627}";
         icon-color: root.sync-input ? Theme.accent : Theme.text-secondary;
         active: root.sync-input;

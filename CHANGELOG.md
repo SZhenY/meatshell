@@ -5,6 +5,43 @@ All notable changes are documented here. 本文件记录所有重要变更。
 
 ## [Unreleased]
 
+## [0.4.14] - 2026-06-22
+
+### Added / 新增
+
+- **面板可拖动吸附停靠(资源面板 + SFTP)。** 资源面板和 SFTP 面板现在都能拖到四条边
+  (上/下/左/右):拖动面板手柄时,四条边浮现高亮放置区,松手即吸附到那条边。两个面板都
+  可拖动调节大小;折叠后会缩成停靠边缘的一个小展开按钮(彻底隐藏面板)。**自适应:** 资源
+  面板横向(上/下)停靠时,内部小组件自动改为横排;SFTP 竖向(左/右、窄)停靠时隐藏目录树,
+  并随宽度**渐进隐藏「大小→时间」列**(名称快被挤成「…」时才让位),横向(上/下、宽)停靠
+  则恒显示全部列。SFTP 工具栏左侧新增专用拖动手柄,密集控件下也能稳稳拖动。
+  **Drag-to-dock panels (resource panel + SFTP).** Both the resource panel and the SFTP
+  panel can now be dragged to any edge (top / bottom / left / right): dragging the
+  panel's handle shows highlighted drop zones on all four edges, and releasing snaps it
+  there. Both panels are drag-resizable and collapse to a small expand button on their
+  docked edge (fully hiding the panel). **Responsive:** the resource panel lays its
+  widgets out in a row when docked horizontally; the SFTP panel hides its directory tree
+  when docked vertically (narrow) and progressively drops the **Size → Modified** columns
+  as it narrows (only once the Name would elide to “…”), while a horizontal (wide) dock
+  always shows every column. A dedicated drag grip was added to the SFTP toolbar so the
+  panel is grabbable even though its toolbar is full of controls.
+
+- **布局持久化。** 两个面板的停靠边与宽/高,以及父窗口大小,都会在退出时保存、下次启动
+  恢复——可以保留你喜欢的窗口尺寸和面板布局。
+  **Layout persistence.** Each panel's docked edge and size, plus the window size, are
+  saved on exit and restored on the next launch — so your preferred window size and
+  panel arrangement stick.
+
+### Fixed / 修复
+
+- **macOS 欢迎页布局错位。** 欢迎页的标题、副标题、快速连接卡片在 macOS 上被拉开(标题与
+  副标题间出现大空隙)。现在 Welcome 显式填满内容区、头部固定在顶部按自然高度排列,卡片填满
+  其余空间。
+  **macOS welcome-page layout spread apart.** The title, tagline and quick-connect card
+  were spaced out on macOS (a large gap between the title and tagline). The Welcome view
+  now explicitly fills the content area and the header is pinned to the top at its
+  natural height, with the card filling the rest.
+
 ## [0.4.13] - 2026-06-21
 
 ### Fixed / 修复

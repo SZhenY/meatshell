@@ -124,6 +124,15 @@ fn default_parity() -> String {
 fn default_sidebar_width() -> f32 {
     220.0
 }
+fn default_sidebar_height() -> f32 {
+    240.0
+}
+fn default_sftp_width() -> f32 {
+    380.0
+}
+fn default_sftp_height() -> f32 {
+    220.0
+}
 fn default_flow() -> String {
     "none".to_string()
 }
@@ -315,6 +324,25 @@ pub struct ConfigFile {
     /// Persisted across restarts so the drag-resized width sticks.
     #[serde(default = "default_sidebar_width")]
     pub sidebar_width: f32,
+    /// Resource-panel docking: size when docked top/bottom, and which edge it is
+    /// docked to (left|right|top|bottom). Persisted so the layout sticks (#dock).
+    #[serde(default = "default_sidebar_height")]
+    pub sidebar_height: f32,
+    #[serde(default)]
+    pub sidebar_dock: String,
+    /// SFTP-panel docking: extents (px) and docked edge, persisted (#dock).
+    #[serde(default = "default_sftp_width")]
+    pub sftp_panel_width: f32,
+    #[serde(default = "default_sftp_height")]
+    pub sftp_panel_height: f32,
+    #[serde(default)]
+    pub sftp_dock: String,
+    /// Last window size in logical px (0 = unset → use the built-in default).
+    /// Lets users keep their preferred window size across restarts.
+    #[serde(default)]
+    pub window_width: f32,
+    #[serde(default)]
+    pub window_height: f32,
     /// Collapse the bottom SFTP panel on startup (#78).
     #[serde(default)]
     pub collapse_sftp_default: bool,
@@ -723,6 +751,53 @@ impl ConfigStore {
 
     pub fn set_sidebar_width(&mut self, v: f32) {
         self.cache.sidebar_width = v;
+    }
+
+    /// Resource / SFTP panel docking geometry, persisted across restarts (#dock).
+    /// Sizes fall back to their defaults when unset/zero; docks fall back to a
+    /// sensible edge when the stored string is empty.
+    pub fn sidebar_height(&self) -> f32 {
+        let h = self.cache.sidebar_height;
+        if h <= 0.0 { default_sidebar_height() } else { h }
+    }
+    pub fn set_sidebar_height(&mut self, v: f32) {
+        self.cache.sidebar_height = v;
+    }
+    pub fn sidebar_dock(&self) -> String {
+        let d = self.cache.sidebar_dock.trim();
+        if d.is_empty() { "left".into() } else { d.to_string() }
+    }
+    pub fn set_sidebar_dock(&mut self, v: String) {
+        self.cache.sidebar_dock = v;
+    }
+    pub fn sftp_panel_width(&self) -> f32 {
+        let w = self.cache.sftp_panel_width;
+        if w <= 0.0 { default_sftp_width() } else { w }
+    }
+    pub fn set_sftp_panel_width(&mut self, v: f32) {
+        self.cache.sftp_panel_width = v;
+    }
+    pub fn sftp_panel_height(&self) -> f32 {
+        let h = self.cache.sftp_panel_height;
+        if h <= 0.0 { default_sftp_height() } else { h }
+    }
+    pub fn set_sftp_panel_height(&mut self, v: f32) {
+        self.cache.sftp_panel_height = v;
+    }
+    pub fn sftp_dock(&self) -> String {
+        let d = self.cache.sftp_dock.trim();
+        if d.is_empty() { "bottom".into() } else { d.to_string() }
+    }
+    pub fn set_sftp_dock(&mut self, v: String) {
+        self.cache.sftp_dock = v;
+    }
+    /// Last window size in logical px; `(0,0)` means unset (use the default).
+    pub fn window_size(&self) -> (f32, f32) {
+        (self.cache.window_width, self.cache.window_height)
+    }
+    pub fn set_window_size(&mut self, w: f32, h: f32) {
+        self.cache.window_width = w;
+        self.cache.window_height = h;
     }
 
     /// Collapse the SFTP panel on startup (default false) (#78).

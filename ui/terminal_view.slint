@@ -103,10 +103,28 @@ export component TerminalView inherits Rectangle {
     in property <[SftpTreeNode]> sftp-tree-nodes: [];
 
     in-out property <length> sftp-panel-height: 220px;
+    in-out property <length> sftp-panel-width: 380px;     // extent when docked left/right
     // Shared with the AppWindow (like sftp-panel-height) so a startup default can
     // collapse the panel and the state stays consistent across tabs (#78).
     in-out property <length> sftp-saved-height: 220px;   // height to restore on un-collapse
     in-out property <bool>   sftp-collapsed: false;       // SFTP panel minimised (toolbar only)
+
+    // --- SFTP docking (within the terminal area) ---------------------------
+    // Which edge of the terminal area the SFTP panel sits on: left|right|top|bottom.
+    in-out property <string> sftp-dock: "bottom";
+    property <bool> sftp-horizontal: root.sftp-dock == "left" || root.sftp-dock == "right";
+    // Drag-to-dock snap state (mirrors the resource-panel docking in app.slint).
+    property <bool> sftp-panel-dragging;
+    property <float> sftp-drag-nx;
+    property <float> sftp-drag-ny;
+    property <string> sftp-dock-target:
+        !root.sftp-panel-dragging ? ""
+        : root.sftp-drag-nx < 0.22 ? "left"
+        : root.sftp-drag-nx > 0.78 ? "right"
+        : root.sftp-drag-ny < 0.22 ? "top"
+        : root.sftp-drag-ny > 0.78 ? "bottom"
+        : "";
+    callback persist-sftp-dock(string);
 
     // Command bar (#55): quick commands + input box + history (all shared/global,
     // fed from Rust); send-to-all is a per-tab toggle.
@@ -295,6 +313,26 @@ export component TerminalView inherits Rectangle {
                 }
             }
         }
+
+        // SFTP docking region — terminal + command-bar (central) on one side,
+        // the SFTP panel docked to the chosen edge. Absolute geometry, mirroring
+        // the resource-panel dock area in app.slint (#dock).
+        dock-region := Rectangle {
+        vertical-stretch: 1;
+        // Collapsed → the panel fully disappears (like the resource panel); a
+        // floating expand button on the docked edge brings it back (#dock).
+        property <length> sf-w: root.sftp-collapsed ? 0px : root.sftp-panel-width;
+        property <length> sf-h: root.sftp-collapsed ? 0px : root.sftp-panel-height;
+        property <length> sp:   root.sftp-collapsed ? 0px : 4px;
+
+        central := Rectangle {
+            x: root.sftp-dock == "left" ? parent.sf-w + parent.sp : 0px;
+            y: root.sftp-dock == "top"  ? parent.sf-h + parent.sp : 0px;
+            width:  root.sftp-horizontal ? parent.width - parent.sf-w - parent.sp : parent.width;
+            height: root.sftp-horizontal ? parent.height : parent.height - parent.sf-h - parent.sp;
+            clip: true;
+            VerticalLayout {
+            spacing: 0;
 
         // --- Key-capture scope + scrollable output --------------------------
         key-capture := FocusScope {
@@ -1214,42 +1252,85 @@ export component TerminalView inherits Rectangle {
                 }
             }
         }
+            }
+        }
 
-        // --- Drag handle ----------------------------------------------------
+        // --- SFTP resize splitter (orientation follows the dock edge) -------
         Rectangle {
-            height: 4px;
+            visible: !root.sftp-collapsed;   // gone when collapsed (like the resource splitter)
+            x: root.sftp-dock == "left"   ? parent.sf-w
+             : root.sftp-dock == "right"  ? parent.width - parent.sf-w - 4px
+             : 0px;
+            y: root.sftp-dock == "top"    ? parent.sf-h
+             : root.sftp-dock == "bottom" ? parent.height - parent.sf-h - 4px
+             : 0px;
+            width:  root.sftp-horizontal ? 4px : parent.width;
+            height: root.sftp-horizontal ? parent.height : 4px;
             background: divider-ta.has-hover || root.sftp-dragging
-                ? Theme.accent
-                : Theme.border-subtle;
-
+                ? Theme.accent : Theme.border-subtle;
             divider-ta := TouchArea {
-                mouse-cursor: row-resize;
-
+                // Hit area extends a few px past the thin visual bar so it's easy
+                // to grab without landing on the terminal / SFTP edge.
+                x: root.sftp-horizontal ? -4px : 0px;
+                y: root.sftp-horizontal ? 0px : -4px;
+                width:  root.sftp-horizontal ? 12px : parent.width;
+                height: root.sftp-horizontal ? parent.height : 12px;
+                mouse-cursor: root.sftp-horizontal ? ew-resize : ns-resize;
                 pointer-event(ev) => {
                     if (ev.kind == PointerEventKind.down) {
-                        root.sftp-dragging      = true;
-                        root.drag-start-mouse-y = self.mouse-y;
+                        root.sftp-dragging = true;
+                        root.sftp-collapsed = false;
                     } else if (ev.kind == PointerEventKind.up) {
                         root.sftp-dragging = false;
                     }
                 }
-
+                // Direct tracking: the panel's docked edge follows the cursor's
+                // position within the (stable) dock-region — no deltas, so no
+                // moving-frame / accumulation issues. NOTE: `parent` here is the
+                // thin splitter Rectangle, so refer to `dock-region` explicitly
+                // for the region's size/origin (#dock).
                 moved => {
                     if (root.sftp-dragging) {
-                        root.sftp-collapsed = false; // dragging the handle un-collapses
-                        root.sftp-panel-height = clamp(
-                            root.sftp-panel-height + root.drag-start-mouse-y - self.mouse-y,
-                            60px,
-                            root.height - 24px - 4px - 16px - 80px
-                        );
+                        if (root.sftp-horizontal) {
+                            // Floor of 150px — by then Size+Modified columns have
+                            // dropped and only Name remains; no narrower (#dock).
+                            root.sftp-panel-width = clamp(
+                                root.sftp-dock == "right"
+                                    ? dock-region.width - ((self.absolute-position.x + self.mouse-x) - dock-region.absolute-position.x)
+                                    : (self.absolute-position.x + self.mouse-x) - dock-region.absolute-position.x,
+                                150px, max(160px, dock-region.width - 200px));
+                        } else {
+                            root.sftp-panel-height = clamp(
+                                root.sftp-dock == "bottom"
+                                    ? dock-region.height - ((self.absolute-position.y + self.mouse-y) - dock-region.absolute-position.y)
+                                    : (self.absolute-position.y + self.mouse-y) - dock-region.absolute-position.y,
+                                60px, max(80px, dock-region.height - 80px));
+                        }
                     }
                 }
             }
         }
 
-        // --- SFTP panel -----------------------------------------------------
+        // --- SFTP panel — positioned on the docked edge ---------------------
         SftpPanel {
-            height: root.sftp-panel-height;
+            x: root.sftp-dock == "right"  ? parent.width - parent.sf-w : 0px;
+            y: root.sftp-dock == "bottom" ? parent.height - parent.sf-h : 0px;
+            width:  root.sftp-horizontal ? parent.sf-w : parent.width;
+            height: root.sftp-horizontal ? parent.height : parent.sf-h;
+            show-tree: !root.sftp-horizontal;   // hide the tree when narrow (vertical)
+            compact: root.sftp-collapsed && root.sftp-horizontal;  // clean strip when side+collapsed
+            dock-drag-move(ax, ay) => {
+                root.sftp-panel-dragging = true;
+                root.sftp-drag-nx = (ax - dock-region.absolute-position.x) / dock-region.width;
+                root.sftp-drag-ny = (ay - dock-region.absolute-position.y) / dock-region.height;
+            }
+            dock-drag-end() => {
+                if (root.sftp-dock-target != "") {
+                    root.sftp-dock = root.sftp-dock-target;
+                    root.persist-sftp-dock(root.sftp-dock);
+                }
+                root.sftp-panel-dragging = false;
+            }
             collapsed:     root.sftp-collapsed;
             current-path:  root.sftp-path;
             entries:       root.sftp-entries;
@@ -1287,6 +1368,66 @@ export component TerminalView inherits Rectangle {
             copy-path(path)     => { root.sftp-copy-path(path); }
             new-folder(dir)     => { root.sftp-new-folder(dir); }
             new-file(dir)       => { root.sftp-new-file(dir); }
+        }
+
+        // Drag-to-dock snap overlay — four edge zones; the one under the cursor
+        // (sftp-dock-target) lights up. Purely visual (#dock).
+        if root.sftp-panel-dragging : Rectangle {
+            x: 0; y: 0; width: parent.width; height: parent.height;
+            Rectangle {
+                x: 0; y: 0; width: parent.width * 0.22; height: parent.height;
+                background: root.sftp-dock-target == "left" ? Theme.accent.with-alpha(0.35) : Theme.accent.with-alpha(0.10);
+                border-width: root.sftp-dock-target == "left" ? 2px : 0px; border-color: Theme.accent;
+            }
+            Rectangle {
+                x: parent.width * 0.78; y: 0; width: parent.width * 0.22; height: parent.height;
+                background: root.sftp-dock-target == "right" ? Theme.accent.with-alpha(0.35) : Theme.accent.with-alpha(0.10);
+                border-width: root.sftp-dock-target == "right" ? 2px : 0px; border-color: Theme.accent;
+            }
+            Rectangle {
+                x: 0; y: 0; width: parent.width; height: parent.height * 0.22;
+                background: root.sftp-dock-target == "top" ? Theme.accent.with-alpha(0.35) : Theme.accent.with-alpha(0.10);
+                border-width: root.sftp-dock-target == "top" ? 2px : 0px; border-color: Theme.accent;
+            }
+            Rectangle {
+                x: 0; y: parent.height * 0.78; width: parent.width; height: parent.height * 0.22;
+                background: root.sftp-dock-target == "bottom" ? Theme.accent.with-alpha(0.35) : Theme.accent.with-alpha(0.10);
+                border-width: root.sftp-dock-target == "bottom" ? 2px : 0px; border-color: Theme.accent;
+            }
+        }
+
+        // Expand button — the collapsed panel fully disappears, so float a clear
+        // expand button on whichever edge it was docked to (like the resource
+        // panel). Chevron points away from the edge, toward where it reopens.
+        if root.sftp-collapsed : Rectangle {
+            width: 24px; height: 24px;
+            x: root.sftp-dock == "right"  ? parent.width - self.width - 2px
+             : root.sftp-dock == "top" || root.sftp-dock == "bottom" ? 6px
+             : 2px;
+            // Centre vertically on left/right edges (consistent with the resource
+            // panel); at the edge for top/bottom.
+            y: root.sftp-dock == "bottom" ? parent.height - self.height - 2px
+             : root.sftp-dock == "top"    ? 2px
+             : (parent.height - self.height) / 2;
+            border-radius: Theme.radius-sm;
+            background: sftp-exp-ta.has-hover ? Theme.bg-hover : Theme.bg-elevated;
+            border-width: 1px; border-color: Theme.border-subtle;
+            sftp-exp-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.sftp-panel-height = root.sftp-saved-height;
+                    root.sftp-collapsed = false;
+                }
+            }
+            Text {
+                text: root.sftp-dock == "right"  ? "\u{E5CB}"   // chevron_left
+                    : root.sftp-dock == "top"    ? "\u{E5CF}"   // expand_more
+                    : root.sftp-dock == "bottom" ? "\u{E5CE}"   // expand_less
+                    : "\u{E5CC}";                               // chevron_right (left dock)
+                font-family: "Material Icons"; font-size: 16px; color: Theme.text-secondary;
+                horizontal-alignment: center; vertical-alignment: center;
+            }
+        }
         }
     }
 }
