@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { SftpPanel, SftpEntry, SftpTreeNode } from "sftp_panel.slint";
-import { DockExpandButton } from "widgets.slint";
+import { DockExpandButton, ToolStrip } from "widgets.slint";
 
 // Embed the terminal fonts here too so the cell-probe Text below measures
 // with the CORRECT font (the built-in Meatshell Mono), not a system fallback.
@@ -333,14 +333,13 @@ export component TerminalView inherits Rectangle {
         // the resource-panel dock area in app.slint (#dock).
         dock-region := Rectangle {
         vertical-stretch: 1;
-        // Collapsed → the panel fully disappears (like the resource panel); a
-        // floating expand button on the docked edge brings it back (#dock).
-        property <length> sf-w: root.sftp-collapsed ? 0px : root.sftp-panel-width;
-        property <length> sf-h: root.sftp-collapsed ? 0px : root.sftp-panel-height;
+        // Collapsed → shrink to the 36px ToolStrip icon bar at the docked edge
+        // (M5), click its icon to re-expand. The 4px splitter is gone collapsed.
+        property <length> sf-w: root.sftp-collapsed ? 36px : root.sftp-panel-width;
+        property <length> sf-h: root.sftp-collapsed ? 36px : root.sftp-panel-height;
         property <length> sp:   root.sftp-collapsed ? 0px : 4px;
-        // Bottom dock + collapsed → reserve a blank 22px gap at the bottom so the
-        // corner expand button (DockExpandButton) never overlaps the command bar.
-        property <length> bottom-strip-h: (root.sftp-dock == "bottom" && root.sftp-collapsed) ? 22px : 0px;
+        // The collapsed bar (sf-h) already reserves the bottom strip now.
+        property <length> bottom-strip-h: 0px;
 
         central := Rectangle {
             x: root.sftp-dock == "left" ? parent.sf-w + parent.sp : 0px;
@@ -1449,13 +1448,12 @@ export component TerminalView inherits Rectangle {
             selected-count: root.sftp-selected-count;
             toggle-collapsed => {
                 if (root.sftp-collapsed) {
-                    // Restore to the saved height.
-                    root.set-sftp-panel-height(root.sftp-saved-height);
+                    // Re-expand; the panel height was preserved while collapsed.
                     root.set-sftp-collapsed(false);
                 } else {
-                    // Minimise: remember the height, shrink to the toolbar (30px).
-                    root.set-sftp-saved-height(root.sftp-panel-height);
-                    root.set-sftp-panel-height(30px);
+                    // Minimise: just collapse. sf-h becomes the 36px bar; the
+                    // panel height is preserved (no 30px poke that would pollute
+                    // the global default seeded into new sessions) (M5).
                     root.set-sftp-collapsed(true);
                 }
             }
@@ -1505,16 +1503,16 @@ export component TerminalView inherits Rectangle {
             }
         }
 
-        // Collapsed → small per-edge expand button (shared with the resource
-        // panel). Bottom sits in the reserved 22px gap (bottom-strip-h) so it
-        // never overlaps the command bar (#dock).
-        if root.sftp-collapsed : DockExpandButton {
+        // Collapsed → a ToolStrip icon bar at the docked edge (M5), filling the
+        // 36px slot the panel shrank to; click the icon to re-expand.
+        if root.sftp-collapsed : ToolStrip {
+            x: root.sftp-dock == "right"  ? parent.width - parent.sf-w : 0px;
+            y: root.sftp-dock == "bottom" ? parent.height - parent.sf-h : 0px;
+            width:  root.sftp-horizontal ? parent.sf-w : parent.width;
+            height: root.sftp-horizontal ? parent.height : parent.sf-h;
             dock-edge: root.sftp-dock;
-            hug-right: true;   // SFTP controls live on the right, keep the button there
-            expand => {
-                root.set-sftp-panel-height(root.sftp-saved-height);
-                root.set-sftp-collapsed(false);
-            }
+            glyph: "\u{E2C7}";   // folder — SFTP
+            expand => { root.set-sftp-collapsed(false); }
         }
         }
     }

@@ -307,7 +307,7 @@ export component AppWindow inherits Window {
         (root.sidebar-dock == "right" && !root.sidebar-collapsed) ? root.sidebar-width + 4px
         // Docked right + collapsed: shift left to leave room for the expand
         // button at the far-right corner (#dock).
-      : (root.sidebar-dock == "right" && root.sidebar-collapsed) ? 30px
+      : (root.sidebar-dock == "right" && root.sidebar-collapsed) ? 36px
       : 0px;
     property <length> toolbar-y-off:
         (root.sidebar-dock == "top" && !root.sidebar-collapsed) ? root.sidebar-height + 4px : 0px;
@@ -853,15 +853,14 @@ export component AppWindow inherits Window {
         rest := Rectangle {
         x: parent.strip-w + parent.welcome-w; y: 0;
         width: parent.width - parent.strip-w - parent.welcome-w; height: parent.height;
-        // Sidebar extent along its docked axis (0 when collapsed); plus a 4px
-        // splitter unless collapsed.
-        property <length> sb-w: root.sidebar-collapsed ? 0px : root.sidebar-width;
-        property <length> sb-h: root.sidebar-collapsed ? 0px : root.sidebar-height;
+        // Sidebar extent along its docked axis. When collapsed it shrinks to the
+        // 36px ToolStrip icon bar (M5) instead of 0 + a floating button; the 4px
+        // splitter is gone while collapsed.
+        property <length> sb-w: root.sidebar-collapsed ? 36px : root.sidebar-width;
+        property <length> sb-h: root.sidebar-collapsed ? 36px : root.sidebar-height;
         property <length> sp: root.sidebar-collapsed ? 0px : 4px;
-        // Docked bottom + collapsed: reserve a thin full-width expand strip at the
-        // very bottom (the bottom edge is full of the command bar / SFTP status, so
-        // a floating corner button would overlap them) (#dock).
-        property <length> bottom-strip-h: (root.sidebar-dock == "bottom" && root.sidebar-collapsed) ? 22px : 0px;
+        // The collapsed bar (sb-h) already reserves the bottom strip now.
+        property <length> bottom-strip-h: 0px;
 
         // Left sidebar — collapsible and drag-resizable, dockable to any edge.
         // The animation is disabled while dragging so the splitter tracks the
@@ -915,6 +914,18 @@ export component AppWindow inherits Window {
                 root.panel-dragging = false;
             }
             toggle-collapse() => { root.sidebar-collapsed = !root.sidebar-collapsed; }
+        }
+
+        // Collapsed resource panel → a ToolStrip icon bar at the same docked edge
+        // (M5), in place of the old floating expand button.
+        if root.sidebar-collapsed : ToolStrip {
+            x: root.sidebar-dock == "right" ? parent.width - parent.sb-w : 0px;
+            y: root.sidebar-dock == "bottom" ? parent.height - parent.sb-h : 0px;
+            width: root.sidebar-horizontal ? parent.sb-w : parent.width;
+            height: root.sidebar-horizontal ? parent.height : parent.sb-h;
+            dock-edge: root.sidebar-dock;
+            glyph: "\u{E871}";   // dashboard — resource panel
+            expand => { root.sidebar-collapsed = false; }
         }
 
         // Splitter — drag to resize the sidebar. Orientation + which dimension it
@@ -992,12 +1003,8 @@ export component AppWindow inherits Window {
 
                 HorizontalLayout {
                 spacing: 0;
-                // The sidebar collapse toggle now lives inside the panel header
-                // (so it follows the panel to any edge); expand-when-collapsed is a
-                // floating button at the docked edge below (#dock). When docked
-                // left/top + collapsed, reserve room on the far left of the FIRST
-                // pane so the expand button sits just left of its first tab.
-                if pi == 0 && (root.sidebar-dock == "left" || root.sidebar-dock == "top") && root.sidebar-collapsed : Rectangle { width: 30px; background: Theme.bg-elevated; }
+                // (Collapsed resource panel now reserves its own ToolStrip slot in
+                // `rest`, so the tab strip no longer needs a spacer for it.)
                 TabBar {
                     horizontal-stretch: 1;
                     // Reserve room for the top-right toolbar icons that sit over
@@ -1240,14 +1247,7 @@ export component AppWindow inherits Window {
         }
         }
 
-        // Collapsed → small per-edge expand button (shared with SFTP). Left/right/
-        // top sit in line with the tab / toolbar row (those shift to make room);
-        // bottom sits in the reserved 22px gap (bottom-strip-h) so it never
-        // overlaps the command bar / SFTP status bar above (#dock).
-        if root.sidebar-collapsed : DockExpandButton {
-            dock-edge: root.sidebar-dock;
-            expand => { root.sidebar-collapsed = false; }
-        }
+        // (Resource collapse now uses a ToolStrip inside `rest`, above.)
 
         // Drag-to-dock snap overlay — four edge zones; the one under the cursor
         // (root.dock-target) lights up. Purely visual (no TouchArea) so the
