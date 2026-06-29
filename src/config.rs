@@ -506,6 +506,9 @@ pub struct ConfigFile {
     /// Interface › Wallpaper opacity slider. 0 = use the 0.86 default (v0.5).
     #[serde(default)]
     pub wallpaper_overlay: f32,
+    /// Settings-panel font scale, percent (80–160). 0 = 100% default (v0.5).
+    #[serde(default)]
+    pub panel_font: u32,
 }
 
 /// Portable export file (issue #46): sessions with everything in plaintext
@@ -958,6 +961,12 @@ impl ConfigStore {
     }
     pub fn set_wallpaper_overlay(&mut self, v: f32) {
         self.cache.wallpaper_overlay = v.clamp(0.40, 1.0);
+    }
+    pub fn panel_font(&self) -> u32 {
+        if self.cache.panel_font == 0 { 100 } else { self.cache.panel_font }
+    }
+    pub fn set_panel_font(&mut self, percent: u32) {
+        self.cache.panel_font = percent.clamp(80, 160);
     }
     pub fn sftp_panel_width(&self) -> f32 {
         let w = self.cache.sftp_panel_width;

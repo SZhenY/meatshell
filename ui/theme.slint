@@ -95,6 +95,9 @@ export global Theme {
     // all font sizes and spacing/radii below multiply by it, so the whole UI
     // grows/shrinks live (the terminal font has its own size setting).
     in-out property <float> ui-scale: 1.0;
+    // Settings-panel font scale (#v0.5). The settings card + its text multiply by
+    // this so the panel (which is exempt from ui-scale) can still be enlarged.
+    in-out property <float> panel-font: 1.0;
 
     // --- Typography --------------------------------------------------------
     out property <length> fs-xs: 11px * root.ui-scale;

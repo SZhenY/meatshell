@@ -414,6 +414,7 @@ pub fn run() -> Result<()> {
         }
         window.set_term_font_size(s.font_size() as f32);
         window.set_ui_scale(s.ui_scale() as f32 / 100.0); // global UI zoom (#100)
+        window.set_panel_font(s.panel_font() as f32 / 100.0); // settings-panel font scale
     }
 
     // Apply the saved immersive wallpaper (overrides dark/light when set; a
@@ -612,6 +613,21 @@ pub fn run() -> Result<()> {
             }
             if let Some(w) = weak.upgrade() {
                 w.set_ui_scale(clamped as f32 / 100.0);
+            }
+        });
+    }
+    {
+        let weak = window.as_weak();
+        let store = store.clone();
+        window.on_set_panel_font(move |percent: i32| {
+            let clamped = (percent.max(0) as u32).clamp(80, 160);
+            {
+                let mut s = store.borrow_mut();
+                s.set_panel_font(clamped);
+                let _ = s.save();
+            }
+            if let Some(w) = weak.upgrade() {
+                w.set_panel_font(clamped as f32 / 100.0);
             }
         });
     }

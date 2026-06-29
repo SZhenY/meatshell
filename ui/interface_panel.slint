@@ -27,16 +27,16 @@ component NavItem inherits Rectangle {
         spacing: 9px;
         Text { text: root.icon; font-family: "Material Icons";
                color: root.active ? Theme.text-primary : Theme.text-secondary;
-               font-size: 15px; vertical-alignment: center; }
+               font-size: 15px * Theme.panel-font; vertical-alignment: center; }
         Text { text: root.label;
                color: root.active ? Theme.text-primary : Theme.text-secondary;
-               font-size: 13px; vertical-alignment: center; horizontal-stretch: 1; }
+               font-size: 13px * Theme.panel-font; vertical-alignment: center; horizontal-stretch: 1; }
     }
 }
 
 // Small muted group heading (字体 / 预览 / SFTP …).
 component SectionHeader inherits Text {
-    font-size: 11px;
+    font-size: 11px * Theme.panel-font;
     font-weight: 700;
     color: Theme.text-muted;
     vertical-alignment: center;
@@ -57,8 +57,8 @@ component SettingRow inherits Rectangle {
                 horizontal-stretch: 1;
                 alignment: center;
                 spacing: 3px;
-                Text { text: root.label; font-size: 13px; color: Theme.text-primary; }
-                if root.desc != "" : Text { text: root.desc; font-size: 11px;
+                Text { text: root.label; font-size: 13px * Theme.panel-font; color: Theme.text-primary; }
+                if root.desc != "" : Text { text: root.desc; font-size: 11px * Theme.panel-font;
                        color: Theme.text-muted; wrap: word-wrap; }
             }
             VerticalLayout {
@@ -119,12 +119,12 @@ component Stepper inherits Rectangle {
                 mouse-cursor: pointer;
                 clicked => { root.changed(max(root.minimum, root.value - root.step)); }
             }
-            Text { text: "\u{E15B}"; font-family: "Material Icons"; font-size: 14px;
+            Text { text: "\u{E15B}"; font-family: "Material Icons"; font-size: 14px * Theme.panel-font;
                    color: Theme.text-secondary; horizontal-alignment: center; vertical-alignment: center; }
         }
         Rectangle { width: 1px; background: Theme.border-subtle; }
         Text { text: root.value + root.unit; horizontal-stretch: 1;
-               font-size: 12px; color: Theme.text-primary;
+               font-size: 12px * Theme.panel-font; color: Theme.text-primary;
                horizontal-alignment: center; vertical-alignment: center; }
         Rectangle { width: 1px; background: Theme.border-subtle; }
         Rectangle {
@@ -134,7 +134,7 @@ component Stepper inherits Rectangle {
                 mouse-cursor: pointer;
                 clicked => { root.changed(min(root.maximum, root.value + root.step)); }
             }
-            Text { text: "\u{E145}"; font-family: "Material Icons"; font-size: 14px;
+            Text { text: "\u{E145}"; font-family: "Material Icons"; font-size: 14px * Theme.panel-font;
                    color: Theme.text-secondary; horizontal-alignment: center; vertical-alignment: center; }
         }
     }
@@ -162,7 +162,7 @@ component WallpaperSwatch inherits Rectangle {
         background: Theme.accent;
         Text {
             text: "\u{E5CA}"; // check
-            font-family: "Material Icons"; color: white; font-size: 13px;
+            font-family: "Material Icons"; color: white; font-size: 13px * Theme.panel-font;
             width: 100%; height: 100%;
             horizontal-alignment: center; vertical-alignment: center;
         }
@@ -199,6 +199,7 @@ export component InterfacePanel inherits Rectangle {
     callback set-term-font(string);
     callback set-term-font-size(int);
     callback set-ui-scale(int);
+    callback set-panel-font(int);   // settings-panel font scale, percent
     callback set-sftp-follow-cd(bool);
     callback set-collapse-sidebar-default(bool);
     callback set-collapse-sftp-default(bool);
@@ -289,10 +290,19 @@ export component InterfacePanel inherits Rectangle {
                     label: root.lang-en ? "UI scale" : "界面缩放";
                     desc: root.lang-en ? "Zooms the whole interface (not this panel)."
                                        : "缩放整个界面(不影响本面板)。";
-                    show-divider: false;
                     Stepper {
                         value: round(root.ui-scale * 100); minimum: 80; maximum: 200; step: 10; unit: "%";
                         changed(v) => { root.set-ui-scale(v); }
+                    }
+                }
+                SettingRow {
+                    label: root.lang-en ? "Settings font size" : "界面字体大小";
+                    desc: root.lang-en ? "Enlarges this settings panel (font + window)."
+                                       : "放大本设置面板的字体和窗口。";
+                    show-divider: false;
+                    Stepper {
+                        value: round(Theme.panel-font * 100); minimum: 80; maximum: 160; step: 10; unit: "%";
+                        changed(v) => { root.set-panel-font(v); }
                     }
                 }
 
@@ -329,7 +339,7 @@ export component InterfacePanel inherits Rectangle {
                     text: root.lang-en
                         ? "Pick a wallpaper — the interface tints itself to match (accent, panels, light/dark)."
                         : "选一张壁纸,界面会沉浸式地适配它的颜色(强调色、面板、深浅)。";
-                    color: Theme.text-muted; font-size: 11px; wrap: word-wrap;
+                    color: Theme.text-muted; font-size: 11px * Theme.panel-font; wrap: word-wrap;
                 }
                 Rectangle { height: 12px; }
 
@@ -349,13 +359,13 @@ export component InterfacePanel inherits Rectangle {
                                 Text {
                                     text: "\u{E14C}"; // clear / none
                                     font-family: "Material Icons"; color: Theme.text-muted;
-                                    font-size: 22px;
+                                    font-size: 22px * Theme.panel-font;
                                     width: 100%; height: 100%;
                                     horizontal-alignment: center; vertical-alignment: center;
                                 }
                             }
                         }
-                        Text { text: root.lang-en ? "None" : "无"; font-size: 11px;
+                        Text { text: root.lang-en ? "None" : "无"; font-size: 11px * Theme.panel-font;
                                color: Theme.text-secondary; horizontal-alignment: center; }
                     }
                     VerticalLayout {
@@ -374,7 +384,7 @@ export component InterfacePanel inherits Rectangle {
                                 }
                             }
                         }
-                        Text { text: root.lang-en ? "Meat Light" : "简约·浅"; font-size: 11px;
+                        Text { text: root.lang-en ? "Meat Light" : "简约·浅"; font-size: 11px * Theme.panel-font;
                                color: Theme.text-secondary; horizontal-alignment: center; }
                     }
                     VerticalLayout {
@@ -393,7 +403,7 @@ export component InterfacePanel inherits Rectangle {
                                 }
                             }
                         }
-                        Text { text: root.lang-en ? "Meat Dark" : "简约·暗"; font-size: 11px;
+                        Text { text: root.lang-en ? "Meat Dark" : "简约·暗"; font-size: 11px * Theme.panel-font;
                                color: Theme.text-secondary; horizontal-alignment: center; }
                     }
                     VerticalLayout {
@@ -419,7 +429,7 @@ export component InterfacePanel inherits Rectangle {
                                 }
                             }
                         }
-                        Text { text: root.lang-en ? "Fantasy 3048" : "幻想3048"; font-size: 11px;
+                        Text { text: root.lang-en ? "Fantasy 3048" : "幻想3048"; font-size: 11px * Theme.panel-font;
                                color: Theme.text-secondary; horizontal-alignment: center; }
                     }
                 }
@@ -445,7 +455,7 @@ export component InterfacePanel inherits Rectangle {
                             Text {
                                 text: "\u{E2C6}"; // folder-open
                                 font-family: "Material Icons"; color: Theme.text-secondary;
-                                font-size: 22px;
+                                font-size: 22px * Theme.panel-font;
                                 width: 100%; height: 100%;
                                 horizontal-alignment: center; vertical-alignment: center;
                             }
@@ -464,14 +474,14 @@ export component InterfacePanel inherits Rectangle {
                             }
                             Text {
                                 text: root.lang-en ? "Choose file…" : "选择文件…";
-                                color: white; font-size: 12px;
+                                color: white; font-size: 12px * Theme.panel-font;
                                 width: 100%; height: 100%;
                                 horizontal-alignment: center; vertical-alignment: center;
                             }
                         }
                         if root.wp-is-custom : Text {
                             text: root.custom-wallpaper-name;
-                            color: Theme.text-muted; font-size: 11px;
+                            color: Theme.text-muted; font-size: 11px * Theme.panel-font;
                             width: 150px; overflow: elide;
                         }
                     }
@@ -498,7 +508,7 @@ export component InterfacePanel inherits Rectangle {
                         Text {
                             text: "\{round((1.0 - root.wallpaper-overlay) * 100)}%";
                             color: Theme.text-secondary;
-                            font-size: 12px;
+                            font-size: 12px * Theme.panel-font;
                             vertical-alignment: center;
                             width: 34px;
                         }
@@ -600,7 +610,7 @@ export component InterfacePanel inherits Rectangle {
                     text: root.lang-en
                         ? "Session sync itself is toggled from the sync icon in the top-right bar."
                         : "会话同步本身从右上角的同步图标开关。";
-                    color: Theme.text-muted; font-size: 11px; wrap: word-wrap;
+                    color: Theme.text-muted; font-size: 11px * Theme.panel-font; wrap: word-wrap;
                 }
             }
 

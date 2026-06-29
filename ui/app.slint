@@ -362,6 +362,8 @@ export component AppWindow inherits Window {
     in-out property <string> term-font-family <=> Theme.term-font-family;
     in-out property <length> term-font-size <=> Theme.term-font-size;
     in-out property <float> ui-scale <=> Theme.ui-scale;   // global UI zoom (#100)
+    in-out property <float> panel-font <=> Theme.panel-font;  // settings-panel font scale
+    callback set-panel-font(int);                          // apply + persist (percent)
     in-out property <string> ui-font-family <=> Theme.ui-font-family;
     // Window focused & visible — Rust drives it from winit events; gates the
     // cursor blink so an idle background window stops repainting (#127).
@@ -3243,8 +3245,9 @@ export component AppWindow inherits Window {
         Rectangle {
             x: root.ifd-x;
             y: root.ifd-y;
-            width: 660px;
-            height: 430px;
+            // Bigger base, and scales with the settings font size (#v0.5).
+            width: 720px * Theme.panel-font;
+            height: 480px * Theme.panel-font;
             background: Theme.bg-panel;
             border-radius: Theme.radius-md;
             border-width: 1px;
@@ -3334,6 +3337,7 @@ export component AppWindow inherits Window {
                     set-term-font(v) => { root.set-term-font(v); }
                     set-term-font-size(v) => { root.set-term-font-size(v); }
                     set-ui-scale(v) => { root.set-ui-scale(v); }
+                    set-panel-font(v) => { root.set-panel-font(v); }
                     set-sftp-follow-cd(v) => { root.set-sftp-follow-cd(v); }
                     set-collapse-sidebar-default(v) => { root.set-collapse-sidebar-default(v); }
                     set-collapse-sftp-default(v) => { root.set-collapse-sftp-default(v); }
