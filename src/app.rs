@@ -5781,6 +5781,15 @@ fn wire_key_input(
             Rc::new(RefCell::new(HashMap::new()));
         let resize_debounce = Rc::new(slint::Timer::default());
         window.on_terminal_resize(move |tab_id: SharedString, cols_f: f32, rows_f: f32| {
+            // A hidden terminal (inactive tab, or a split sibling not currently
+            // shown) reports 0 width/height. Ignore those: flooring 0 to the 10-col
+            // minimum and applying it would shrink that tab's PTY *and* poison
+            // `last_term_size`, so the next connection (e.g. "Duplicate connection")
+            // would start at 10 cols and wrap its first output to ~10 chars (#v0.5).
+            // Only genuine, visible sizes drive a resize.
+            if cols_f < 1.0 || rows_f < 1.0 {
+                return;
+            }
             let cols = (cols_f as u32).max(10);
             let rows = (rows_f as u32).max(5);
             pending_size
