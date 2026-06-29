@@ -745,20 +745,41 @@ pub fn run() -> Result<()> {
             }
         });
     }
-    // Per-session SFTP collapse: persist the toggle into that tab's TerminalState
-    // so split panes / other tabs each keep their own state (#v0.5).
+    // Per-session SFTP state: collapse + sizes live in each tab's TerminalState so
+    // split panes / other tabs each keep their own (resizing/collapsing one no
+    // longer bleeds onto the rest) (#v0.5).
     {
         let terminals_model = terminals_model.clone();
         window.on_set_pane_sftp_collapsed(move |tab_id: SharedString, v: bool| {
-            for i in 0..terminals_model.row_count() {
-                if let Some(mut row) = terminals_model.row_data(i) {
-                    if row.id.as_str() == tab_id.as_str() {
-                        row.sftp_collapsed = v;
-                        terminals_model.set_row_data(i, row);
-                        break;
-                    }
-                }
+            update_terminal_row(&terminals_model, &tab_id, |r| r.sftp_collapsed = v);
+        });
+    }
+    {
+        let terminals_model = terminals_model.clone();
+        let weak = window.as_weak();
+        window.on_set_pane_sftp_height(move |tab_id: SharedString, v: f32| {
+            update_terminal_row(&terminals_model, &tab_id, |r| r.sftp_panel_height = v);
+            // Mirror to the global default so it persists (saved on close) and
+            // seeds new sessions; other open tabs use their own field, unaffected.
+            if let Some(w) = weak.upgrade() {
+                w.set_sftp_panel_height(v);
             }
+        });
+    }
+    {
+        let terminals_model = terminals_model.clone();
+        let weak = window.as_weak();
+        window.on_set_pane_sftp_width(move |tab_id: SharedString, v: f32| {
+            update_terminal_row(&terminals_model, &tab_id, |r| r.sftp_panel_width = v);
+            if let Some(w) = weak.upgrade() {
+                w.set_sftp_panel_width(v);
+            }
+        });
+    }
+    {
+        let terminals_model = terminals_model.clone();
+        window.on_set_pane_sftp_saved_height(move |tab_id: SharedString, v: f32| {
+            update_terminal_row(&terminals_model, &tab_id, |r| r.sftp_saved_height = v);
         });
     }
 
@@ -2338,12 +2359,19 @@ fn wire_session_callbacks(
                 kind: "terminal".into(),
                 connected: false,
             });
-            // Each session keeps its own SFTP-collapsed state, seeded from the
-            // "collapse SFTP by default" preference (#v0.5).
-            let sftp_collapsed_default = weak
+            // Each session keeps its own SFTP collapse state + sizes, seeded from
+            // the global defaults (the "collapse SFTP by default" pref and the
+            // persisted panel sizes) so they no longer bleed across panes (#v0.5).
+            let (sftp_collapsed_default, sftp_h_default, sftp_w_default) = weak
                 .upgrade()
-                .map(|w| w.get_collapse_sftp_default())
-                .unwrap_or(false);
+                .map(|w| {
+                    (
+                        w.get_collapse_sftp_default(),
+                        w.get_sftp_panel_height(),
+                        w.get_sftp_panel_width(),
+                    )
+                })
+                .unwrap_or((false, 220.0, 380.0));
             terminals_model.push(TerminalState {
                 id: tab_id.clone().into(),
                 status: t("连接中...", "Connecting...").into(),
@@ -2371,6 +2399,9 @@ fn wire_session_callbacks(
                 ),
                 sftp_selected_count: 0,
                 sftp_collapsed: sftp_collapsed_default,
+                sftp_panel_height: sftp_h_default,
+                sftp_panel_width: sftp_w_default,
+                sftp_saved_height: sftp_h_default,
             });
             // Create vt100 parser for this tab (default 24×80; resized on first
             // terminal-resize callback). 5000-line scrollback is stored for
@@ -4130,6 +4161,23 @@ fn tabs_eq(a: &ModelRc<TabInfo>, b: &ModelRc<TabInfo>) -> bool {
         (Some(x), Some(y)) => x.id == y.id,
         _ => false,
     })
+}
+
+/// Find the terminal row with `tab_id`, apply `mutator`, and write it back.
+fn update_terminal_row(
+    model: &VecModel<TerminalState>,
+    tab_id: &str,
+    mutator: impl FnOnce(&mut TerminalState),
+) {
+    for i in 0..model.row_count() {
+        if let Some(mut row) = model.row_data(i) {
+            if row.id.as_str() == tab_id {
+                mutator(&mut row);
+                model.set_row_data(i, row);
+                return;
+            }
+        }
+    }
 }
 
 fn refresh_panes(

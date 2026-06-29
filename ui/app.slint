@@ -68,6 +68,9 @@ export struct TerminalState {
     sftp-tree-nodes: [SftpTreeNode],
     sftp-selected-count: int,   // checked entries in the SFTP panel (#100)
     sftp-collapsed: bool,       // SFTP panel minimised — per session (#v0.5)
+    sftp-panel-height: length,  // SFTP panel extent (bottom dock) — per session
+    sftp-panel-width: length,   // SFTP panel extent (side dock) — per session
+    sftp-saved-height: length,  // height to restore on un-collapse — per session
 }
 
 // One leaf pane of the split layout (v0.5). Geometry (x/y/w/h) is computed in Rust
@@ -409,9 +412,12 @@ export component AppWindow inherits Window {
     callback set-collapse-sftp-default(bool);      // apply + persist
     in-out property <bool> sftp-collapsed: false;       // (legacy global; per-tab now)
     in-out property <length> sftp-saved-height: 220px;  // restore height on un-collapse
-    // Per-session SFTP collapse: persist the toggle into that tab's TerminalState
-    // so split panes / other tabs keep their own state (#v0.5).
+    // Per-session SFTP state: persist the collapse + sizes into that tab's
+    // TerminalState so split panes / other tabs keep their own (#v0.5).
     callback set-pane-sftp-collapsed(string /* tab-id */, bool);
+    callback set-pane-sftp-height(string /* tab-id */, length);
+    callback set-pane-sftp-width(string /* tab-id */, length);
+    callback set-pane-sftp-saved-height(string /* tab-id */, length);
     // Confirm-before-close when there are live session tabs (#88): a stray
     // double-click on the title-bar icon / X shouldn't drop active sessions.
     in-out property <bool> confirm-close-open: false;
@@ -1064,12 +1070,15 @@ export component AppWindow inherits Window {
                     is-alt-screen: term.is-alt-screen;
                     find-matches: term.find-matches;
                     selection: term.selection;
-                    sftp-panel-height <=> root.sftp-panel-height;
-                    sftp-panel-width <=> root.sftp-panel-width;
+                    sftp-panel-height: term.sftp-panel-height;
+                    set-sftp-panel-height(v) => { root.set-pane-sftp-height(term.id, v); }
+                    sftp-panel-width: term.sftp-panel-width;
+                    set-sftp-panel-width(v) => { root.set-pane-sftp-width(term.id, v); }
                     sftp-dock <=> root.sftp-dock;
                     sftp-collapsed: term.sftp-collapsed;
                     set-sftp-collapsed(v) => { root.set-pane-sftp-collapsed(term.id, v); }
-                    sftp-saved-height <=> root.sftp-saved-height;
+                    sftp-saved-height: term.sftp-saved-height;
+                    set-sftp-saved-height(v) => { root.set-pane-sftp-saved-height(term.id, v); }
                     sftp-path: term.sftp-path;
                     sftp-entries: term.sftp-entries;
                     sftp-status: term.sftp-status;
