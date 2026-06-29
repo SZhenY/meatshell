@@ -398,6 +398,9 @@ export component AppWindow inherits Window {
     // Collapse-by-default settings + shared SFTP collapse state (#78).
     in-out property <bool> collapse-sidebar-default: false;
     callback set-collapse-sidebar-default(bool);   // apply + persist
+    // Render the welcome/session list as a left sidebar instead of a tab (v0.5).
+    in-out property <bool> welcome-as-sidebar: false;
+    callback set-welcome-as-sidebar(bool);         // apply + persist
     in-out property <bool> collapse-sftp-default: false;
     callback set-collapse-sftp-default(bool);      // apply + persist
     in-out property <bool> sftp-collapsed: false;       // shared across tabs
@@ -3187,6 +3190,7 @@ export component AppWindow inherits Window {
                     collapse-sftp-default <=> root.collapse-sftp-default;
                     sync-upload-enabled <=> root.sync-upload-enabled;
                     download-always-ask <=> root.download-always-ask;
+                    welcome-as-sidebar <=> root.welcome-as-sidebar;
                     current-wallpaper: root.current-wallpaper;
                     custom-wallpaper-name: root.custom-wallpaper-name;
                     set-wallpaper(v) => { root.set-wallpaper(v); }
@@ -3199,6 +3203,7 @@ export component AppWindow inherits Window {
                     set-collapse-sftp-default(v) => { root.set-collapse-sftp-default(v); }
                     set-sync-upload-enabled(v) => { root.set-sync-upload-enabled(v); }
                     set-download-always-ask(v) => { root.set-download-always-ask(v); }
+                    set-welcome-as-sidebar(v) => { root.set-welcome-as-sidebar(v); }
                 }
             }
         }

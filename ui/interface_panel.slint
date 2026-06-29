@@ -185,6 +185,7 @@ export component InterfacePanel inherits Rectangle {
     in-out property <bool> collapse-sftp-default;
     in-out property <bool> sync-upload-enabled;
     in-out property <bool> download-always-ask;
+    in-out property <bool> welcome-as-sidebar;
     // Active wallpaper id: "" / "builtin:light" / "builtin:dark" / a file path.
     in property <string> current-wallpaper;
     in property <string> custom-wallpaper-name;   // basename for the file row
@@ -202,6 +203,7 @@ export component InterfacePanel inherits Rectangle {
     callback set-collapse-sftp-default(bool);
     callback set-sync-upload-enabled(bool);
     callback set-download-always-ask(bool);
+    callback set-welcome-as-sidebar(bool);
     callback set-wallpaper(string);    // none / builtin selection
     callback pick-wallpaper-file();    // open the OS file dialog (Rust)
 
@@ -233,6 +235,11 @@ export component InterfacePanel inherits Rectangle {
                     icon: "\u{E5CB}"; label: root.lang-en ? "Sidebars" : "侧栏";
                     active: root.ifd-page == "sidebar";
                     clicked => { root.ifd-page = "sidebar"; }
+                }
+                NavItem {
+                    icon: "\u{E88A}"; label: root.lang-en ? "Welcome page" : "欢迎页";
+                    active: root.ifd-page == "welcome";
+                    clicked => { root.ifd-page = "welcome"; }
                 }
                 NavItem {
                     icon: "\u{E627}"; label: root.lang-en ? "Session sync" : "会话同步";
@@ -514,6 +521,27 @@ export component InterfacePanel inherits Rectangle {
                     Switch {
                         on: root.collapse-sftp-default;
                         toggled(v) => { root.collapse-sftp-default = v; root.set-collapse-sftp-default(v); }
+                    }
+                }
+            }
+
+            // --- Welcome page ------------------------------------------
+            if root.ifd-page == "welcome" : VerticalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                padding-top: 14px;
+                spacing: 0;
+                alignment: start;
+                SectionHeader { text: root.lang-en ? "WELCOME PAGE" : "欢迎页"; height: 24px; }
+                SettingRow {
+                    label: root.lang-en ? "Show the welcome page as a sidebar" : "欢迎页设为侧栏";
+                    desc: root.lang-en
+                        ? "Dock the session list on the left instead of a \"New tab\" tab; opened sessions fill the center."
+                        : "把会话列表停靠在左侧,不再用「新标签页」标签;打开的会话占据中央区域。";
+                    show-divider: false;
+                    Switch {
+                        on: root.welcome-as-sidebar;
+                        toggled(v) => { root.welcome-as-sidebar = v; root.set-welcome-as-sidebar(v); }
                     }
                 }
             }

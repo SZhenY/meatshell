@@ -490,6 +490,7 @@ pub fn run() -> Result<()> {
         window.set_sftp_panel_width(s.sftp_panel_width());
         window.set_sftp_panel_height(s.sftp_panel_height());
         window.set_sftp_dock(s.sftp_dock().into());
+        window.set_welcome_as_sidebar(s.welcome_as_sidebar());
         if collapse_sidebar {
             window.set_sidebar_collapsed(true);
         }
@@ -510,6 +511,14 @@ pub fn run() -> Result<()> {
         window.on_set_collapse_sidebar_default(move |v| {
             let mut s = store.borrow_mut();
             s.set_collapse_sidebar_default(v);
+            let _ = s.save();
+        });
+    }
+    {
+        let store = store.clone();
+        window.on_set_welcome_as_sidebar(move |v| {
+            let mut s = store.borrow_mut();
+            s.set_welcome_as_sidebar(v);
             let _ = s.save();
         });
     }

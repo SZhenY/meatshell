@@ -492,6 +492,10 @@ pub struct ConfigFile {
     /// sessions (same path, falling back to each panel's current dir).
     #[serde(default)]
     pub sync_upload: bool,
+    /// Render the welcome page (session list) as a docked left sidebar instead of
+    /// a "New tab" tab (v0.5). Persisted so the layout choice sticks.
+    #[serde(default)]
+    pub welcome_as_sidebar: bool,
 }
 
 /// Portable export file (issue #46): sessions with everything in plaintext
@@ -918,6 +922,12 @@ impl ConfigStore {
     }
     pub fn set_sidebar_dock(&mut self, v: String) {
         self.cache.sidebar_dock = v;
+    }
+    pub fn welcome_as_sidebar(&self) -> bool {
+        self.cache.welcome_as_sidebar
+    }
+    pub fn set_welcome_as_sidebar(&mut self, v: bool) {
+        self.cache.welcome_as_sidebar = v;
     }
     pub fn sftp_panel_width(&self) -> f32 {
         let w = self.cache.sftp_panel_width;
