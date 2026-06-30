@@ -54,8 +54,8 @@ msgstr "About"
 msgid "About meatshell"
 msgstr "About meatshell"
 
-msgid "A lightweight Rust + Slint SSH terminal client by 'lil meatball'."
-msgstr "A lightweight Rust + Slint SSH terminal client by 'lil meatball'."
+msgid "A lightweight Rust + Slint SSH terminal client."
+msgstr "A lightweight Rust + Slint SSH terminal client."
 
 msgid "Open source · MIT / Apache-2.0"
 msgstr "Open source · MIT / Apache-2.0"
@@ -318,8 +318,8 @@ msgstr "-R: server port → target reached from here"
 msgid "-D: local SOCKS5 proxy"
 msgstr "-D: local SOCKS5 proxy"
 
-msgid "meatshell — a lightweight Rust + Slint SSH client by 'lil meatball'"
-msgstr "meatshell — a lightweight Rust + Slint SSH client by 'lil meatball'"
+msgid "a lightweight Rust + Slint SSH client"
+msgstr "a lightweight Rust + Slint SSH client"
 
 msgid "Quick connect"
 msgstr "Quick connect"

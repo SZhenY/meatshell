@@ -54,8 +54,8 @@ msgstr "关于"
 msgid "About meatshell"
 msgstr "关于 meatshell"
 
-msgid "A lightweight Rust + Slint SSH terminal client by 'lil meatball'."
-msgstr "一个由「一坨肉」开发的轻量 Rust + Slint SSH 终端客户端。"
+msgid "A lightweight Rust + Slint SSH terminal client."
+msgstr "一个由 Rust + Slint 开发的轻量 SSH 终端客户端。"
 
 msgid "Open source · MIT / Apache-2.0"
 msgstr "开源项目 · 协议 MIT / Apache-2.0"
@@ -327,8 +327,8 @@ msgstr "-R：服务器端口 → 由本机访问的目标"
 msgid "-D: local SOCKS5 proxy"
 msgstr "-D：本地 SOCKS5 代理"
 
-msgid "meatshell — a lightweight Rust + Slint SSH client by 'lil meatball'"
-msgstr "meatshell 一个由「一坨肉」开发的轻量 Rust + Slint SSH 客户端"
+msgid "a lightweight Rust + Slint SSH client"
+msgstr "一个由 Rust + Slint 开发的轻量 SSH 客户端"
 
 msgid "Quick connect"
 msgstr "快速连接"
