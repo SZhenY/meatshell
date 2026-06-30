@@ -139,14 +139,6 @@ meatshell/
 - 目前 `check_server_key` 接受任意服务端密钥（类似 `StrictHostKeyChecking=no`），
   生产使用前请接入 known_hosts 校验。
 
-## 赞赏 / 请我喝杯咖啡
-
-觉得作品还不错的话，请我喝杯咖啡吧 ☕
-
-<p align="center">
-  <strong>亮出网络乞丐乞讨专用码</strong><br>
-  <img src="docs/screenshots/sponsor-wechat.png" alt="微信赞赏码" width="260">
-</p>
 
 ## License
 
