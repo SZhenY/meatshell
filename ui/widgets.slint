@@ -195,6 +195,7 @@ export component ToolStrip inherits Rectangle {
     in property <string> dock-edge;   // left | right | top | bottom
     in property <string> glyph;       // the panel's tool icon (Material Icons)
     in property <string> tooltip;
+    in property <bool> enabled: true;  // false → TouchArea ignores clicks
     callback expand();
     property <bool> horizontal: root.dock-edge == "top" || root.dock-edge == "bottom";
 
@@ -226,6 +227,7 @@ export component ToolStrip inherits Rectangle {
             height: parent.height;
         }
         ta := TouchArea {
+            enabled: root.enabled;
             mouse-cursor: pointer;
             clicked => { root.expand(); }
         }

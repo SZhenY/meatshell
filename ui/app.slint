@@ -309,8 +309,8 @@ export component AppWindow inherits Window {
         // button at the far-right corner (#dock).
       : (root.sidebar-dock == "right" && root.sidebar-collapsed) ? 36px
       : 0px;
-    property <length> toolbar-y-off:
-        (root.sidebar-dock == "top" && !root.sidebar-collapsed) ? root.sidebar-height + 4px : 0px;
+    animate toolbar-x-off { duration: 200ms; easing: ease-out; }
+    property <length> toolbar-y: (root.custom-titlebar ? 44px : 8px + root.titlebar-inset) + dock-area.central-y;
     in-out property <bool> about-open: false;     // centered About dialog
     callback open-repo();                          // open the project's GitHub page
     in-out property <bool> shortcuts-open: false; // centered keyboard-shortcuts dialog (#103)
@@ -773,22 +773,30 @@ export component AppWindow inherits Window {
         // panel itself (welcome-w) only while expanded — one or the other.
         property <length> strip-w: (root.welcome-as-sidebar && root.welcome-collapsed) ? 36px : 0px;
         property <length> welcome-w: (root.welcome-as-sidebar && !root.welcome-collapsed) ? root.welcome-sidebar-width : 0px;
+        animate strip-w, welcome-w { duration: 200ms; easing: ease-out; }
         property <bool> welcome-sidebar-dragging;
+        property <length> central-y: central.y;
 
         // Collapsed welcome → a thin left icon strip (click the icon to re-open).
-        if root.welcome-as-sidebar && root.welcome-collapsed : ToolStrip {
+        // Always rendered; opacity crossfades for smooth collapse/expand animation.
+        ToolStrip {
+            visible: root.welcome-as-sidebar;
             x: 0; y: 0; width: parent.strip-w; height: parent.height;
             dock-edge: "left";
             glyph: "\u{E88A}";   // session list / welcome
+            opacity: root.welcome-collapsed ? 1.0 : 0.0;
+            animate opacity { duration: 200ms; easing: ease-out; }
+            enabled: root.welcome-as-sidebar && root.welcome-collapsed;
             expand => {
                 root.welcome-collapsed = false;
                 root.set-welcome-collapsed(false);
             }
         }
 
-        // Welcome / session list, to the right of the icon strip. Hidden when
-        // collapsed — its icon stays in the strip; clicking it re-opens.
-        if root.welcome-as-sidebar && !root.welcome-collapsed : Rectangle {
+        // Welcome / session list, to the right of the icon strip. Always rendered;
+        // opacity crossfades + width animation for smooth collapse/expand.
+        Rectangle {
+            visible: root.welcome-as-sidebar;
             x: parent.strip-w; y: 0; width: parent.welcome-w; height: parent.height;
             background: Theme.bg-panel;
             clip: true;
@@ -829,12 +837,17 @@ export component AppWindow inherits Window {
         }
 
         // Drag the welcome sidebar's right edge to resize it (v0.5 M3b).
-        if root.welcome-as-sidebar && !root.welcome-collapsed : Rectangle {
+        // Always rendered; opacity fades with the panel.
+        Rectangle {
+            visible: root.welcome-as-sidebar;
             x: parent.strip-w + parent.welcome-w - 2px; y: 0;
             width: 4px; height: parent.height;
+            opacity: root.welcome-collapsed ? 0.0 : 1.0;
+            animate opacity { duration: 200ms; easing: ease-out; }
             background: ws-split-ta.has-hover || dock-area.welcome-sidebar-dragging
                 ? Theme.accent : transparent;
             ws-split-ta := TouchArea {
+                enabled: root.welcome-as-sidebar && !root.welcome-collapsed;
                 mouse-cursor: ew-resize;
                 pointer-event(ev) => {
                     if (ev.kind == PointerEventKind.down) {
@@ -866,6 +879,8 @@ export component AppWindow inherits Window {
         property <length> sb-w: root.sidebar-collapsed ? 36px : root.sidebar-width;
         property <length> sb-h: root.sidebar-collapsed ? 36px : root.sidebar-height;
         property <length> sp: root.sidebar-collapsed ? 0px : 4px;
+        animate sb-w, sb-h { duration: root.sidebar-dragging ? 0ms : 200ms; easing: ease-out; }
+        animate sp { duration: root.sidebar-dragging ? 0ms : 200ms; easing: ease-out; }
         // The collapsed bar (sb-h) already reserves the bottom strip now.
         property <length> bottom-strip-h: 0px;
 
@@ -873,6 +888,7 @@ export component AppWindow inherits Window {
         // The animation is disabled while dragging so the splitter tracks the
         // cursor 1:1 instead of lagging behind.
         Sidebar {
+            collapsed: root.sidebar-collapsed;
             x: root.sidebar-dock == "right" ? parent.width - parent.sb-w
              : 0px;
             y: root.sidebar-dock == "bottom" ? parent.height - parent.sb-h
@@ -880,11 +896,11 @@ export component AppWindow inherits Window {
             width: root.sidebar-horizontal ? parent.sb-w : parent.width;
             height: root.sidebar-horizontal ? parent.height : parent.sb-h;
             clip: true;
-            visible: !root.sidebar-collapsed;
+            opacity: root.sidebar-collapsed ? 0.0 : 1.0;
+            animate opacity { duration: 200ms; easing: ease-out; }
             // Docked top/bottom → lay the resource widgets out in a row.
             lay-horizontal: !root.sidebar-horizontal;
             dock-edge: root.sidebar-dock;
-            animate width, height { duration: root.sidebar-dragging ? 0ms : 150ms; easing: ease-out; }
             connection-state: root.connection-state;
             conn-state: root.conn-state;
             resource-title: root.resource-title;
@@ -925,21 +941,26 @@ export component AppWindow inherits Window {
         }
 
         // Collapsed resource panel → a ToolStrip icon bar at the same docked edge
-        // (M5), in place of the old floating expand button.
-        if root.sidebar-collapsed : ToolStrip {
+        // (M5), in place of the old floating expand button. Always rendered;
+        // opacity crossfades for smooth collapse/expand animation.
+        rsrc-toolstrip := ToolStrip {
             x: root.sidebar-dock == "right" ? parent.width - parent.sb-w : 0px;
             y: root.sidebar-dock == "bottom" ? parent.height - parent.sb-h : 0px;
             width: root.sidebar-horizontal ? parent.sb-w : parent.width;
             height: root.sidebar-horizontal ? parent.height : parent.sb-h;
             dock-edge: root.sidebar-dock;
             glyph: "\u{E871}";   // dashboard — resource panel
+            opacity: root.sidebar-collapsed ? 1.0 : 0.0;
+            animate opacity { duration: 200ms; easing: ease-out; }
+            enabled: root.sidebar-collapsed;
             expand => { root.sidebar-collapsed = false; }
         }
 
         // Splitter — drag to resize the sidebar. Orientation + which dimension it
-        // adjusts follow the dock edge. Hidden while collapsed.
+        // adjusts follow the dock edge. Fades out while collapsed.
         Rectangle {
-            visible: !root.sidebar-collapsed;
+            opacity: root.sidebar-collapsed ? 0.0 : 1.0;
+            animate opacity { duration: 200ms; easing: ease-out; }
             // Horizontal docks → a vertical 4px bar at the sidebar's inner edge;
             // vertical docks → a horizontal 4px bar.
             x: root.sidebar-dock == "left"   ? parent.sb-w
@@ -1300,28 +1321,28 @@ export component AppWindow inherits Window {
     // of the tab row — below the custom title bar when frameless (y offset), or
     // at the very top on macOS where the native title bar is separate (#119).
     IconBtn {
-        x: root.width - 34px - root.toolbar-x-off; y: (root.custom-titlebar ? 46px : 8px + root.titlebar-inset) + root.toolbar-y-off;
+        x: root.width - 34px - root.toolbar-x-off; y: root.toolbar-y;
         icon: "\u{E8B8}";
         tooltip: root.lang-en ? "Settings" : "设置";
         active: root.settings-open;
         clicked => { root.settings-open = !root.settings-open; root.download-open = false; root.ssh-import-hint = ""; }
     }
     IconBtn {
-        x: root.width - 64px - root.toolbar-x-off; y: (root.custom-titlebar ? 46px : 8px + root.titlebar-inset) + root.toolbar-y-off;
+        x: root.width - 64px - root.toolbar-x-off; y: root.toolbar-y;
         icon: "\u{E2C4}";
         tooltip: root.lang-en ? "Download" : "下载";
         active: root.download-open;
         clicked => { root.download-open = !root.download-open; root.settings-open = false; }
     }
     IconBtn {
-        x: root.width - 94px - root.toolbar-x-off; y: (root.custom-titlebar ? 46px : 8px + root.titlebar-inset) + root.toolbar-y-off;
+        x: root.width - 94px - root.toolbar-x-off; y: root.toolbar-y;
         icon: Theme.dark ? "\u{E518}" : "\u{E51C}";
         icon-color: Theme.dark ? #f5c542 : #5856d6;
         tooltip: root.lang-en ? "Toggle theme" : "切换主题";
         clicked => { root.toggle-theme(); }
     }
     IconBtn {
-        x: root.width - 124px - root.toolbar-x-off; y: (root.custom-titlebar ? 46px : 8px + root.titlebar-inset) + root.toolbar-y-off;
+        x: root.width - 124px - root.toolbar-x-off; y: root.toolbar-y;
         icon: "\u{E627}";
         icon-color: root.sync-input ? Theme.accent : Theme.text-secondary;
         active: root.sync-input;
@@ -1648,10 +1669,12 @@ export component AppWindow inherits Window {
         // Follow the download button (shifts with the toolbar when the resource
         // panel docks right/top) (#dock).
         x: parent.width - 364px - root.toolbar-x-off;
-        y: (root.custom-titlebar ? 78px : 40px + root.titlebar-inset) + root.toolbar-y-off;
+        y: (root.toolbar-y + 32px) + (root.download-open ? 0px : -8px);
         width: 350px;
         height: 400px;
-        visible: root.download-open;
+        opacity: root.download-open ? 1.0 : 0.0;
+        animate opacity { duration: 150ms; easing: ease-out; }
+        animate y { duration: 150ms; easing: ease-out; }
         background: Theme.bg-panel;
         border-radius: Theme.radius-md;
         border-width: 1px;
@@ -1659,11 +1682,10 @@ export component AppWindow inherits Window {
         drop-shadow-blur: 16px;
         drop-shadow-color: #00000070;
 
-        // Swallow pointer events so right-clicks don't fall through to the
-        // terminal's context menu underneath.
-        TouchArea {}
+        TouchArea { enabled: root.download-open; }
 
         VerticalLayout {
+            visible: root.download-open;
             padding: 14px;
             spacing: 10px;
 
@@ -1675,18 +1697,6 @@ export component AppWindow inherits Window {
                     font-weight: 600;
                     horizontal-stretch: 1;
                     vertical-alignment: center;
-                }
-                Rectangle {
-                    width: 20px; height: 20px;
-                    border-radius: Theme.radius-sm;
-                    background: close-ta.has-hover ? Theme.bg-hover : transparent;
-                    close-ta := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.download-open = false; }
-                    }
-                    Text { text: "\u{E5CD}"; font-family: "Material Icons";
-                           color: Theme.text-secondary; font-size: Theme.fs-sm;
-                           horizontal-alignment: center; vertical-alignment: center; }
                 }
             }
 
@@ -1861,12 +1871,12 @@ export component AppWindow inherits Window {
         // panel docks right/top, so the menu must shift the same amount or it ends
         // up floating over the resource panel (#dock).
         x: parent.width - 196px - root.toolbar-x-off;
-        y: (root.custom-titlebar ? 78px : 40px + root.titlebar-inset) + root.toolbar-y-off;
+        y: (root.toolbar-y + 32px) + (root.settings-open ? 0px : -8px);
         width: 198px;
-        // Size to the menu's content so adding/removing items (or the
-        // ~/.ssh/config import hint expanding) never overflows the card (#150-fix).
         height: menu-vl.preferred-height;
-        visible: root.settings-open;
+        opacity: root.settings-open ? 1.0 : 0.0;
+        animate opacity { duration: 150ms; easing: ease-out; }
+        animate y { duration: 150ms; easing: ease-out; }
         background: Theme.bg-panel;
         border-radius: Theme.radius-md;
         border-width: 1px;
@@ -1874,9 +1884,10 @@ export component AppWindow inherits Window {
         drop-shadow-blur: 14px;
         drop-shadow-color: #00000060;
 
-        TouchArea {}   // swallow events so they don't reach the terminal
+        TouchArea { enabled: root.settings-open; }
 
         menu-vl := VerticalLayout {
+            visible: root.settings-open;
             padding: 4px;
             spacing: 1px;
             // Interface (font) settings.

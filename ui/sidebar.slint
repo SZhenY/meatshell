@@ -200,10 +200,12 @@ component StatusBlock inherits Rectangle {
     in property <int> conn-state;
     in property <string> connection-state;
     in property <string> collapse-icon;   // chevron pointing toward the docked edge
+    in property <bool> collapsed: false;  // true → disable all interactions
     callback dock-drag-move(length, length);
     callback dock-drag-end();
     callback collapse();
     TouchArea {
+        enabled: !root.collapsed;
         mouse-cursor: move;
         moved => {
             root.dock-drag-move(self.absolute-position.x + self.mouse-x,
@@ -235,7 +237,7 @@ component StatusBlock inherits Rectangle {
                 y: (parent.height - self.height) / 2;
                 border-radius: Theme.radius-sm;
                 background: cl-ta.has-hover ? Theme.bg-hover : transparent;
-                cl-ta := TouchArea { mouse-cursor: pointer; clicked => { root.collapse(); } }
+                cl-ta := TouchArea { enabled: !root.collapsed; mouse-cursor: pointer; clicked => { root.collapse(); } }
                 Text { text: root.collapse-icon; font-family: "Material Icons";
                        font-size: 14px; color: Theme.text-secondary;
                        horizontal-alignment: center; vertical-alignment: center; }
@@ -389,6 +391,7 @@ export component Sidebar inherits Rectangle {
     callback dock-drag-move(length /* abs-x */, length /* abs-y */);
     callback dock-drag-end();
     callback toggle-collapse();
+    in property <bool> collapsed: false;  // true → disable drag/collapse interactions
     // When docked top/bottom the panel is short and wide, so the blocks lay out
     // in a row; left/right keeps the classic vertical stack (#dock).
     in property <bool> lay-horizontal;
@@ -409,6 +412,7 @@ export component Sidebar inherits Rectangle {
     // net selector, disk rows) are in front and capture their own events, so
     // this only fires on the panel's empty space (#dock).
     dock-bg := TouchArea {
+        enabled: !root.collapsed;
         mouse-cursor: move;
         moved => {
             root.dock-drag-move(self.absolute-position.x + self.mouse-x,
@@ -424,6 +428,7 @@ export component Sidebar inherits Rectangle {
         padding: 10px;
         spacing: 10px;
         StatusBlock {
+            collapsed: root.collapsed;
             conn-state: root.conn-state;
             connection-state: root.connection-state;
             collapse-icon: root.collapse-icon;
@@ -466,6 +471,7 @@ export component Sidebar inherits Rectangle {
             spacing: 8px;
             min-width: 200px;
             StatusBlock {
+                collapsed: root.collapsed;
                 conn-state: root.conn-state;
                 connection-state: root.connection-state;
                 collapse-icon: root.collapse-icon;
