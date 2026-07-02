@@ -1,7 +1,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 
 use slint::{ModelRc, VecModel};
 
@@ -117,11 +118,11 @@ pub fn apply_terminal_resize(
     cols: u32,
     rows: u32,
 ) {
-    *last_term_size.lock().unwrap() = (cols, rows);
+    *last_term_size.lock() = (cols, rows);
     if let Some(handle) = handles.borrow().get(tab_id) {
         handle.resize(cols, rows);
     }
-    if let Some(buf) = bufs.lock().unwrap().get_mut(tab_id) {
+    if let Some(buf) = bufs.lock().get_mut(tab_id) {
         let (old_rows, old_cols) = buf.parser.screen().size();
         let (new_rows, new_cols) = (rows as u16, cols as u16);
         if (new_rows, new_cols) != (old_rows, old_cols) {
@@ -146,7 +147,7 @@ pub fn apply_terminal_resize(
 /// Used by scroll + selection callbacks (Output has its own equivalent inline).
 pub fn rebuild_tab_display(win: &AppWindow, bufs: &TermBuffers, tab_id: &str) {
     let data = {
-        let mut map = bufs.lock().unwrap();
+        let mut map = bufs.lock();
         let Some(buf) = map.get_mut(tab_id) else { return };
         let cols = buf.parser.screen().size().1;
         let b = buf.render(); // also refreshes buf.displayed_text

@@ -11,7 +11,8 @@
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 
 /// `<log_dir>/error.log`, in its own `log/` folder beside the exe.
 pub fn path() -> Option<PathBuf> {
@@ -70,11 +71,11 @@ impl CappedWriter {
 impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CappedWriter {
     type Writer = Guard<'a>;
     fn make_writer(&'a self) -> Self::Writer {
-        Guard(self.0.lock().unwrap_or_else(|e| e.into_inner()))
+        Guard(self.0.lock())
     }
 }
 
-pub struct Guard<'a>(std::sync::MutexGuard<'a, CappedFile>);
+pub struct Guard<'a>(parking_lot::MutexGuard<'a, CappedFile>);
 
 impl Write for Guard<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {

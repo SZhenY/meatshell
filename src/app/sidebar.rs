@@ -57,17 +57,17 @@ pub(super) fn refresh_sidebar(
             0.0
         }
     };
-    let snap = local.lock().unwrap().clone();
+    let snap = local.lock().clone();
 
     // --- Bottom network graph: always the local machine --------------------
     win.set_net_bot_up(format_bytes_per_sec(snap.net_tx_per_sec).into());
     win.set_net_bot_down(format_bytes_per_sec(snap.net_rx_per_sec).into());
-    win.set_net_bot_history(normalized_model(&local_net_hist.lock().unwrap()));
+    win.set_net_bot_history(normalized_model(&local_net_hist.lock()));
 
     let set_top_local = |win: &AppWindow| {
         win.set_net_top_up(format_bytes_per_sec(snap.net_tx_per_sec).into());
         win.set_net_top_down(format_bytes_per_sec(snap.net_rx_per_sec).into());
-        win.set_net_top_history(normalized_model(&local_net_hist.lock().unwrap()));
+        win.set_net_top_history(normalized_model(&local_net_hist.lock()));
         win.set_net_show_selector(false);
         win.set_net_selected("".into());
         win.set_net_ifaces(ModelRc::from(Rc::new(VecModel::<SharedString>::default())));
@@ -111,7 +111,7 @@ pub(super) fn refresh_sidebar(
     let status = if active == "welcome" {
         None
     } else {
-        statuses.lock().unwrap().get(&active).cloned()
+        statuses.lock().get(&active).cloned()
     };
 
     match status {

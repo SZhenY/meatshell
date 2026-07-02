@@ -1,7 +1,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 
 use slint::{ComponentHandle, SharedString, VecModel};
 
@@ -350,7 +351,7 @@ pub(crate) fn wire_key_input(
             // with a fresh screen instead of forcing the user to open a new one.
             if key.as_str() == "\n" && !ctrl && !alt {
                 let dead_session = {
-                    let statuses = ctx.tab_statuses.lock().unwrap();
+                    let statuses = ctx.tab_statuses.lock();
                     statuses
                         .get(tab_id.as_str())
                         .filter(|st| st.state == 2)
@@ -363,13 +364,13 @@ pub(crate) fn wire_key_input(
                     // Drop the dead shell/SFTP handles for this tab.
                     ctx.handles.borrow_mut().remove(tab_id.as_str());
                     if let Some(h) =
-                        ctx.sftp_handles.lock().unwrap().remove(tab_id.as_str())
+                        ctx.sftp_handles.lock().remove(tab_id.as_str())
                     {
                         h.close();
                     }
                     // Fresh screen: new parser, cleared history/selection.
                     {
-                        let mut map = ctx.bufs.lock().unwrap();
+                        let mut map = ctx.bufs.lock();
                         if let Some(b) = map.get_mut(tab_id.as_str()) {
                             let (rows, cols) = b.parser.screen().size();
                             b.parser = vt100::Parser::new(rows, cols, 5000);
@@ -383,12 +384,12 @@ pub(crate) fn wire_key_input(
                         }
                     }
                     if let Some(st) =
-                        ctx.tab_statuses.lock().unwrap().get_mut(tab_id.as_str())
+                        ctx.tab_statuses.lock().get_mut(tab_id.as_str())
                     {
                         st.state = 0;
                     }
                     // Fresh session: the first OSC 7 after reconnect follows.
-                    ctx.sftp_last_cwd.lock().unwrap().remove(tab_id.as_str());
+                    ctx.sftp_last_cwd.lock().remove(tab_id.as_str());
                     if let Some(w) = ctx.weak.upgrade() {
                         set_terminal_row(&w, tab_id.as_str(), |t| {
                             t.status =
@@ -403,7 +404,7 @@ pub(crate) fn wire_key_input(
             // (DECCKM, set by nano/vim via \x1b[?1h). In that mode the terminal
             // must send \x1bOA/B/C/D instead of \x1b[A/B/C/D.
             let app_cursor = {
-                let mut map = bufs.lock().unwrap();
+                let mut map = bufs.lock();
                 match map.get_mut(tab_id.as_str()) {
                     Some(b) => {
                         // Typing snaps the view back to the live bottom so the
@@ -430,9 +431,7 @@ pub(crate) fn wire_key_input(
                 // this diagnostic cares about), masking any printable char that
                 // could be part of a Shift-typed password symbol (#15).
                 let codepoints = redact_key(key.as_str());
-                let elapsed_ms = last_shift_time
-                    .lock()
-                    .unwrap()
+                let elapsed_ms = (*last_shift_time.lock())
                     .map(|t| format!("{}ms ago", t.elapsed().as_millis()))
                     .unwrap_or_else(|| "never".to_string());
                 tracing::info!(
@@ -447,7 +446,7 @@ pub(crate) fn wire_key_input(
             // alone fires so the filter below can catch IME-injected Backspace
             // events even if they arrive with shift=false.
             if key.as_str().is_empty() && shift && !ctrl && !alt {
-                *last_shift_time.lock().unwrap() = Some(std::time::Instant::now());
+                *last_shift_time.lock() = Some(std::time::Instant::now());
                 tracing::info!("[KEY_DIAG] lone-Shift recorded → timestamp saved");
             }
 
@@ -477,7 +476,7 @@ pub(crate) fn wire_key_input(
                         && (0x01..=0x1f).contains(&cp)
                         && !is_standalone
                     {
-                        *last_shift_time.lock().unwrap() = Some(std::time::Instant::now());
+                        *last_shift_time.lock() = Some(std::time::Instant::now());
                         tracing::info!(
                             "[KEY_DIAG] DROPPED IME C0 marker U+{:04X} (shift={}) → timestamp saved",
                             cp, shift
@@ -568,7 +567,7 @@ pub(crate) fn wire_key_input(
                 // 日志显示百度拼音注入 U+0010(右Shift标记) 到 Backspace 之间
                 // 间隔约 914ms，因此窗口设为 1500ms 以覆盖该场景。
                 let (shift_just_pressed, elapsed_ms) = {
-                    let guard = last_shift_time.lock().unwrap();
+                    let guard = last_shift_time.lock();
                     match *guard {
                         Some(t) => {
                             let ms = t.elapsed().as_millis();
@@ -693,7 +692,7 @@ pub(crate) fn wire_key_input(
         let bufs = bufs.clone();
         window.on_copy_terminal_text(move |tab_id: SharedString| {
             let text = {
-                let map = bufs.lock().unwrap();
+                let map = bufs.lock();
                 match map.get(tab_id.as_str()) {
                     Some(buf) => {
                         // Copy the drag-selection when there is one, else the
@@ -752,7 +751,7 @@ pub(crate) fn wire_key_input(
         let weak = window.as_weak();
         window.on_clear_terminal(move |tab_id: SharedString| {
             let tid = tab_id.to_string();
-            if let Some(buf) = bufs_clear.lock().unwrap().get_mut(&tid) {
+            if let Some(buf) = bufs_clear.lock().get_mut(&tid) {
                 let (rows, cols) = buf.parser.screen().size();
                 buf.parser = vt100::Parser::new(rows, cols, 5000);
                 buf.find_query.clear();
@@ -793,7 +792,7 @@ pub(crate) fn wire_key_input(
             let tid = tab_id.to_string();
             let q = query.to_string();
             let matches = {
-                let mut map = bufs_find.lock().unwrap();
+                let mut map = bufs_find.lock();
                 if let Some(buf) = map.get_mut(&tid) {
                     buf.find_query = q.clone();
                     compute_find_matches(&buf.displayed_text, &q)
@@ -817,7 +816,7 @@ pub(crate) fn wire_key_input(
         window.on_terminal_scroll(move |tab_id: SharedString, delta: i32| {
             let tid = tab_id.to_string();
             {
-                let mut map = bufs_scroll.lock().unwrap();
+                let mut map = bufs_scroll.lock();
                 let Some(buf) = map.get_mut(&tid) else { return };
                 // Scroll within our own session scrollback (history lines above
                 // the live screen).  Offset 0 = live bottom.
@@ -843,7 +842,7 @@ pub(crate) fn wire_key_input(
         window.on_terminal_wheel(move |tab_id: SharedString, dir: i32, col: i32, row: i32| {
             let tid = tab_id.to_string();
             let bytes = {
-                let map = bufs_wheel.lock().unwrap();
+                let map = bufs_wheel.lock();
                 let Some(buf) = map.get(&tid) else { return };
                 let screen = buf.parser.screen();
                 if screen.mouse_protocol_mode() != vt100::MouseProtocolMode::None {
@@ -886,7 +885,7 @@ pub(crate) fn wire_key_input(
         window.on_terminal_scroll_to(move |tab_id: SharedString, offset: i32| {
             let tid = tab_id.to_string();
             {
-                let mut map = bufs_scroll.lock().unwrap();
+                let mut map = bufs_scroll.lock();
                 let Some(buf) = map.get_mut(&tid) else { return };
                 let max_off = buf.history.len() as i64;
                 buf.view_offset = (offset as i64).clamp(0, max_off) as usize;
@@ -904,7 +903,7 @@ pub(crate) fn wire_key_input(
         window.on_term_select_start(move |tab_id: SharedString, row: i32, col: i32| {
             let tid = tab_id.to_string();
             {
-                let mut map = bufs_sel.lock().unwrap();
+                let mut map = bufs_sel.lock();
                 let Some(buf) = map.get_mut(&tid) else { return };
                 let (rows, cols) = buf.parser.screen().size();
                 let r = row.clamp(0, rows.saturating_sub(1) as i32) as u16;
@@ -925,7 +924,7 @@ pub(crate) fn wire_key_input(
         window.on_term_select_update(move |tab_id: SharedString, row: i32, col: i32| {
             let tid = tab_id.to_string();
             {
-                let mut map = bufs_sel.lock().unwrap();
+                let mut map = bufs_sel.lock();
                 let Some(buf) = map.get_mut(&tid) else { return };
                 let (rows, cols) = buf.parser.screen().size();
                 let r = row.clamp(0, rows.saturating_sub(1) as i32) as u16;
@@ -948,7 +947,7 @@ pub(crate) fn wire_key_input(
             // Extract the selected text; a zero-area selection (a plain click)
             // is cleared instead of copied.
             let text = {
-                let mut map = bufs_sel.lock().unwrap();
+                let mut map = bufs_sel.lock();
                 let Some(buf) = map.get_mut(&tid) else { return };
                 let extracted = buf.extract_selection_text();
                 if extracted.is_empty() {
@@ -982,7 +981,7 @@ pub(crate) fn wire_key_input(
         window.on_term_select_autoscroll(move |tab_id: SharedString, dir: i32| {
             let tid = tab_id.to_string();
             {
-                let mut map = bufs_sel.lock().unwrap();
+                let mut map = bufs_sel.lock();
                 let Some(buf) = map.get_mut(&tid) else { return };
                 // No scrollback on the alternate screen (vim/btop own the view).
                 if buf.parser.screen().alternate_screen() {

@@ -6,6 +6,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use parking_lot;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -239,17 +240,17 @@ pub enum SessionCommand {
 /// the first `respond` consumes the sender, later calls are no-ops.
 #[derive(Clone)]
 pub struct HostKeyResponder(
-    Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>,
+    Arc<parking_lot::Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>,
 );
 
 impl HostKeyResponder {
     pub fn new(tx: tokio::sync::oneshot::Sender<bool>) -> Self {
-        Self(Arc::new(std::sync::Mutex::new(Some(tx))))
+        Self(Arc::new(parking_lot::Mutex::new(Some(tx))))
     }
 
     /// Deliver the user's decision (`true` = trust). Idempotent.
     pub fn respond(&self, accept: bool) {
-        if let Ok(mut guard) = self.0.lock() {
+        let mut guard = self.0.lock(); {
             if let Some(tx) = guard.take() {
                 let _ = tx.send(accept);
             }
@@ -271,17 +272,17 @@ pub type CredentialReply = (String, String, bool);
 /// `Arc<Mutex<Option<…>>>` so the enclosing [`SessionEvent`] stays `Clone`.
 #[derive(Clone)]
 pub struct CredentialResponder(
-    Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Sender<Option<CredentialReply>>>>>,
+    Arc<parking_lot::Mutex<Option<tokio::sync::oneshot::Sender<Option<CredentialReply>>>>>,
 );
 
 impl CredentialResponder {
     pub fn new(tx: tokio::sync::oneshot::Sender<Option<CredentialReply>>) -> Self {
-        Self(Arc::new(std::sync::Mutex::new(Some(tx))))
+        Self(Arc::new(parking_lot::Mutex::new(Some(tx))))
     }
 
     /// Deliver the user's answer (`None` = cancelled). Idempotent.
     pub fn respond(&self, reply: Option<CredentialReply>) {
-        if let Ok(mut guard) = self.0.lock() {
+        let mut guard = self.0.lock(); {
             if let Some(tx) = guard.take() {
                 let _ = tx.send(reply);
             }
@@ -300,17 +301,17 @@ impl std::fmt::Debug for CredentialResponder {
 /// `Arc<Mutex<Option<…>>>` so the enclosing [`SessionEvent`] stays `Clone`.
 #[derive(Clone)]
 pub struct MfaResponder(
-    Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Sender<Option<String>>>>>,
+    Arc<parking_lot::Mutex<Option<tokio::sync::oneshot::Sender<Option<String>>>>>,
 );
 
 impl MfaResponder {
     pub fn new(tx: tokio::sync::oneshot::Sender<Option<String>>) -> Self {
-        Self(Arc::new(std::sync::Mutex::new(Some(tx))))
+        Self(Arc::new(parking_lot::Mutex::new(Some(tx))))
     }
 
     /// Deliver the user's answer (`None` = cancelled). Idempotent.
     pub fn respond(&self, reply: Option<String>) {
-        if let Ok(mut guard) = self.0.lock() {
+        let mut guard = self.0.lock(); {
             if let Some(tx) = guard.take() {
                 let _ = tx.send(reply);
             }

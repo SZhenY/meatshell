@@ -38,8 +38,8 @@ pub(crate) fn wire_sftp_callbacks(
             // Forget the followed cwd so the next OSC 7 — even at an unchanged
             // directory — snaps the panel back to the shell's cwd; manual
             // navigation never permanently disables cd-follow.
-            sftp_last_cwd.lock().unwrap().remove(&tab_id);
-            if let Ok(handles) = sftp_handles.lock() {
+            sftp_last_cwd.lock().remove(&tab_id);
+            let handles = sftp_handles.lock(); {
                 if let Some(h) = handles.get(&tab_id) {
                     h.list_dir(resolved);
                 }
@@ -98,7 +98,7 @@ pub(crate) fn wire_sftp_callbacks(
                 })
                 .unwrap_or_default();
             if !always_ask && !preset.is_empty() {
-                if let Ok(handles) = sftp_handles.lock() {
+                let handles = sftp_handles.lock(); {
                     if let Some(h) = handles.get(&tab_id) {
                         if let Some(ref dir) = arc_dir {
                             h.download_archive(dir.clone(), arc_names.clone(), preset);
@@ -119,7 +119,7 @@ pub(crate) fn wire_sftp_callbacks(
             std::thread::spawn(move || {
                 if let Some(dir) = rfd::FileDialog::new().pick_folder() {
                     let local_dir = dir.to_string_lossy().to_string();
-                    if let Ok(handles) = sftp_handles.lock() {
+                    let handles = sftp_handles.lock(); {
                         if let Some(h) = handles.get(&tab_id) {
                             if let Some(ref rdir) = arc_dir {
                                 h.download_archive(rdir.clone(), arc_names.clone(), local_dir);
@@ -154,10 +154,9 @@ pub(crate) fn wire_sftp_callbacks(
                     .filter(|w| w.get_sync_input() && w.get_sync_upload_enabled())
                     .map(|w| {
                         let paths = terminal_sftp_paths(&w);
-                        let handles = sftp_handles.lock().ok();
+                        let handles = sftp_handles.lock();
                         handles
-                            .iter()
-                            .flat_map(|h| h.keys())
+                            .keys()
                             .filter(|id| *id != &tab_id)
                             .filter_map(|id| paths.get(id).map(|dir| (id.clone(), dir.clone())))
                             .filter(|(_, dir)| !dir.is_empty())
@@ -186,7 +185,7 @@ pub(crate) fn wire_sftp_callbacks(
                     if locals.is_empty() {
                         return;
                     }
-                    if let Ok(handles) = sftp_handles.lock() {
+                    let handles = sftp_handles.lock(); {
                         if let Some(h) = handles.get(&tab_id) {
                             for local in &locals {
                                 h.upload(local.clone(), remote_dir.clone());
@@ -213,7 +212,7 @@ pub(crate) fn wire_sftp_callbacks(
         window.on_sftp_refresh(move |tab_id: SharedString, path: SharedString| {
             let tab_id = tab_id.to_string();
             let path = path.to_string();
-            if let Ok(handles) = sftp_handles.lock() {
+            let handles = sftp_handles.lock(); {
                 if let Some(h) = handles.get(&tab_id) {
                     // Refresh re-syncs the left tree too, not just the file list (#189).
                     h.refresh_dir(path);
@@ -231,8 +230,8 @@ pub(crate) fn wire_sftp_callbacks(
             let path = path.to_string();
             // Forget the followed cwd (see on_sftp_navigate): tree navigation
             // must never permanently disable cd-follow.
-            sftp_last_cwd.lock().unwrap().remove(&tab_id);
-            if let Ok(handles) = sftp_handles.lock() {
+            sftp_last_cwd.lock().remove(&tab_id);
+            let handles = sftp_handles.lock(); {
                 if let Some(h) = handles.get(&tab_id) {
                     h.toggle_tree_node(path.clone());
                     h.list_dir(path);
@@ -247,7 +246,7 @@ pub(crate) fn wire_sftp_callbacks(
     {
         let sftp_handles = sftp_handles.clone();
         window.on_sftp_delete(move |tab_id: SharedString, path: SharedString| {
-            if let Ok(handles) = sftp_handles.lock() {
+            let handles = sftp_handles.lock(); {
                 if let Some(h) = handles.get(tab_id.as_str()) {
                     h.delete(path.to_string());
                 }
@@ -321,7 +320,7 @@ pub(crate) fn wire_sftp_callbacks(
             let preset = w.get_download_dir().to_string();
             let always_ask = w.get_download_always_ask();
             if !always_ask && !preset.is_empty() {
-                if let Ok(handles) = sftp_handles.lock() {
+                let handles = sftp_handles.lock(); {
                     if let Some(h) = handles.get(tab_id.as_str()) {
                         if single {
                             h.download(paths[0].clone(), preset.clone());
@@ -338,7 +337,7 @@ pub(crate) fn wire_sftp_callbacks(
                 std::thread::spawn(move || {
                     if let Some(dir) = rfd::FileDialog::new().pick_folder() {
                         let dir = dir.to_string_lossy().to_string();
-                        if let Ok(handles) = sftp_handles.lock() {
+                        let handles = sftp_handles.lock(); {
                             if let Some(h) = handles.get(&tab) {
                                 if single {
                                     h.download(paths[0].clone(), dir.clone());
@@ -368,7 +367,7 @@ pub(crate) fn wire_sftp_callbacks(
             if paths.is_empty() {
                 return;
             }
-            if let Ok(handles) = sftp_handles.lock() {
+            let handles = sftp_handles.lock(); {
                 if let Some(h) = handles.get(tab_id.as_str()) {
                     for p in &paths {
                         h.delete(p.clone());
@@ -384,7 +383,7 @@ pub(crate) fn wire_sftp_callbacks(
     {
         let sftp_handles = sftp_handles.clone();
         window.on_sftp_view(move |tab_id: SharedString, path: SharedString| {
-            if let Ok(handles) = sftp_handles.lock() {
+            let handles = sftp_handles.lock(); {
                 if let Some(h) = handles.get(tab_id.as_str()) {
                     h.read_text(path.to_string(), false);
                 }
@@ -394,7 +393,7 @@ pub(crate) fn wire_sftp_callbacks(
     {
         let sftp_handles = sftp_handles.clone();
         window.on_sftp_edit(move |tab_id: SharedString, path: SharedString| {
-            if let Ok(handles) = sftp_handles.lock() {
+            let handles = sftp_handles.lock(); {
                 if let Some(h) = handles.get(tab_id.as_str()) {
                     h.read_text(path.to_string(), true);
                 }
@@ -407,7 +406,7 @@ pub(crate) fn wire_sftp_callbacks(
     {
         let sftp_handles = sftp_handles.clone();
         window.on_sftp_open_external(move |tab_id: SharedString, path: SharedString| {
-            if let Ok(handles) = sftp_handles.lock() {
+            let handles = sftp_handles.lock(); {
                 if let Some(h) = handles.get(tab_id.as_str()) {
                     h.open_temp(path.to_string(), false);
                 }
@@ -417,7 +416,7 @@ pub(crate) fn wire_sftp_callbacks(
     {
         let sftp_handles = sftp_handles.clone();
         window.on_sftp_edit_external(move |tab_id: SharedString, path: SharedString| {
-            if let Ok(handles) = sftp_handles.lock() {
+            let handles = sftp_handles.lock(); {
                 if let Some(h) = handles.get(tab_id.as_str()) {
                     h.open_temp(path.to_string(), true);
                 }
@@ -440,10 +439,7 @@ pub(crate) fn wire_sftp_callbacks(
                     return;
                 }
                 let target = target.to_string();
-                let handles = match sftp_handles.lock() {
-                    Ok(h) => h,
-                    Err(_) => return,
-                };
+                let handles = sftp_handles.lock();
                 let Some(h) = handles.get(tab_id.as_str()) else {
                     return;
                 };
@@ -513,7 +509,7 @@ pub(crate) fn wire_sftp_callbacks(
                 | (w.get_chmod_tx() as u32);
             let path = w.get_chmod_path().to_string();
             let tab = w.get_chmod_tab().to_string();
-            if let Ok(handles) = sftp_handles.lock() {
+            let handles = sftp_handles.lock(); {
                 if let Some(h) = handles.get(&tab) {
                     h.chmod(path, mode);
                 }
@@ -545,7 +541,7 @@ pub(crate) fn wire_sftp_callbacks(
             let path = w.get_editor_path().to_string();
             let content = w.get_editor_content().to_string();
             let tab_id = w.get_active_tab_id().to_string();
-            if let Ok(handles) = sftp_handles.lock() {
+            let handles = sftp_handles.lock(); {
                 if let Some(h) = handles.get(&tab_id) {
                     h.write_text(path, content);
                 }
@@ -563,7 +559,7 @@ pub(crate) fn wire_sftp_callbacks(
                 let path = w.get_editor_path().to_string();
                 let content = w.get_editor_content().to_string();
                 let tab_id = w.get_active_tab_id().to_string();
-                if let Ok(handles) = sftp_handles.lock() {
+                let handles = sftp_handles.lock(); {
                     if let Some(h) = handles.get(&tab_id) {
                         h.write_text(path, content);
                     }

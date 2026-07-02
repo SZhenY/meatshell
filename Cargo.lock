@@ -3406,6 +3406,7 @@ dependencies = [
  "i-slint-backend-winit",
  "icu_provider",
  "image",
+ "parking_lot",
  "rand 0.8.6",
  "raw-window-handle",
  "rayon",

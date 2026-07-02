@@ -36,7 +36,8 @@ use session_cb::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 
 /// Per-terminal state: vt100 parser drives all rendering for both normal
 /// (bash) and alt-screen (vim/nano/htop) modes.
@@ -951,7 +952,7 @@ pub fn run() -> Result<()> {
         window.on_select_net_iface(move |iface: SharedString| {
             let Some(w) = weak.upgrade() else { return };
             let active = w.get_active_tab_id().to_string();
-            if let Some(st) = statuses.lock().unwrap().get_mut(&active) {
+            if let Some(st) = statuses.lock().get_mut(&active) {
                 st.selected_iface = iface.to_string();
                 st.net_hist = vec![0.0; NET_HISTORY_LEN]; // reset graph for new NIC
             }
@@ -1063,7 +1064,7 @@ pub fn run() -> Result<()> {
         // and will act on it (#100).
         let sftp_handles = sftp_handles.clone();
         window.on_cancel_transfer(move |id: SharedString| {
-            if let Ok(handles) = sftp_handles.lock() {
+            let handles = sftp_handles.lock(); {
                 for h in handles.values() {
                     h.cancel_transfer(id.to_string());
                 }
@@ -1175,18 +1176,18 @@ pub fn run() -> Result<()> {
                 WinActivity::Active => {}
             }
             let snap = {
-                let mut s = tick_sampler.lock().expect("sampler poisoned");
+                let mut s = tick_sampler.lock();
                 s.sample()
             };
             // Append the raw local throughput to the bottom-graph ring buffer
             // (normalisation happens at display time so the graph auto-scales).
             push_ring(
-                &mut tick_net.lock().unwrap(),
+                &mut tick_net.lock(),
                 snap.net_bytes_per_sec as f32,
             );
             // Stash the local sample; the sidebar shows it on the welcome tab
             // and in the bottom network graph.
-            *tick_local.lock().unwrap() = snap.clone();
+            *tick_local.lock() = snap.clone();
 
             if let Some(w) = weak.upgrade() {
                 // Everything (status, CPU/mem/swap, both graphs) follows the

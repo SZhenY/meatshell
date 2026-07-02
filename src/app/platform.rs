@@ -207,7 +207,7 @@ pub fn handle_file_drop(win: &AppWindow, sftp_handles: &SftpHandles, path: Strin
     // matches the upload button's behaviour (drag-and-drop is a separate path).
     let sync = win.get_sync_input() && win.get_sync_upload_enabled();
     let other_dirs = if sync { super::terminal_sftp_paths(win) } else { HashMap::new() };
-    if let Ok(handles) = sftp_handles.lock() {
+    let handles = sftp_handles.lock(); {
         if let Some(h) = handles.get(&active) {
             h.upload(path.clone(), dir);
         }

@@ -1,7 +1,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
@@ -636,7 +637,7 @@ pub(crate) fn wire_session_callbacks(
             // Seed the per-tab status so the sidebar shows "连接中 host" the
             // moment this tab becomes active (the `changed active-tab-id`
             // handler fires refresh-sidebar right after set_active_tab_id below).
-            tab_statuses.lock().unwrap().insert(
+            tab_statuses.lock().insert(
                 tab_id.clone(),
                 TabStatus {
                     host: conn_label.clone(),
@@ -701,7 +702,7 @@ pub(crate) fn wire_session_callbacks(
             // terminal-resize callback). 5000-line scrollback is stored for
             // future scroll-navigation support.
             let is_dark_now = weak.upgrade().map(|w| w.get_dark_mode()).unwrap_or(true);
-            bufs.lock().unwrap().insert(
+            bufs.lock().insert(
                 tab_id.clone(),
                 TermBuffer {
                     parser: vt100::Parser::new(24, 80, 5000),
@@ -720,7 +721,7 @@ pub(crate) fn wire_session_callbacks(
                 },
             );
             // No followed-cwd yet: the first OSC 7 always triggers a follow.
-            sftp_last_cwd.lock().unwrap().remove(&tab_id);
+            sftp_last_cwd.lock().remove(&tab_id);
             // Add the new tab to the focused pane and re-flatten (this also sets
             // active-tab-id to the new tab via refresh_panes).
             layout.borrow_mut().add_tab(tab_id.clone());
@@ -764,7 +765,6 @@ pub(crate) fn wire_session_callbacks(
             let tab_id = tab_id.to_string();
             let session_id = tab_statuses
                 .lock()
-                .unwrap()
                 .get(&tab_id)
                 .map(|s| s.session_id.clone())
                 .unwrap_or_default();
@@ -810,7 +810,7 @@ pub(crate) struct ConnectCtx {
 /// reconnect (#79); the tab/terminal/parser must already exist.
 pub(crate) fn start_session_in_tab(tab_id: &str, session: Session, ctx: &ConnectCtx) {
     let has_sftp = session.kind == SessionKind::Ssh;
-    let (initial_cols, initial_rows) = *ctx.last_term_size.lock().unwrap();
+    let (initial_cols, initial_rows) = *ctx.last_term_size.lock();
     let (handle, rx) = match session.kind {
         SessionKind::Ssh => spawn_session(
             ctx.runtime.handle(),
@@ -840,7 +840,6 @@ pub(crate) fn start_session_in_tab(tab_id: &str, session: Session, ctx: &Connect
         let sftp_handle = spawn_sftp(ctx.runtime.handle(), session, sftp_tx);
         ctx.sftp_handles
             .lock()
-            .unwrap()
             .insert(tab_id.to_string(), sftp_handle);
         Some(sftp_rx)
     } else {
@@ -896,12 +895,10 @@ pub(crate) fn start_session_in_tab(tab_id: &str, session: Session, ctx: &Connect
                             // OSC 7, same directory or not, snaps the panel back to
                             // the shell's cwd. Unchanged repeats (every prompt
                             // re-emits OSC 7) are ignored (#59).
-                            let changed = match sftp_last_cwd_pump.lock() {
-                                Ok(mut m) => {
-                                    m.insert(tab_id_pump.clone(), cwd.clone()).as_deref()
-                                        != Some(cwd.as_str())
-                                }
-                                Err(_) => false,
+                            let changed = {
+                                let mut m = sftp_last_cwd_pump.lock();
+                                m.insert(tab_id_pump.clone(), cwd.clone()).as_deref()
+                                    != Some(cwd.as_str())
                             };
                             // Swallow when follow-cd is off: forwarding it would set
                             // sftp_loading without any ListDir to clear it (the #59
@@ -919,7 +916,7 @@ pub(crate) fn start_session_in_tab(tab_id: &str, session: Session, ctx: &Connect
                             let tid = tab_id_pump.clone();
                             cwd_debounce = Some(rt_pump.spawn(async move {
                                 tokio::time::sleep(std::time::Duration::from_millis(CWD_DEBOUNCE_MS)).await;
-                                if let Ok(handles) = sftp_h.lock() {
+                                let handles = sftp_h.lock(); {
                                     if let Some(h) = handles.get(&tid) {
                                         h.list_dir(cwd_spawn);
                                     }
@@ -1043,12 +1040,12 @@ pub(crate) fn theme_pref_is_dark(store: &ConfigStore) -> bool {
 pub(crate) fn apply_dark_mode(window: &AppWindow, bufs: &TermBuffers, dark: bool) {
     window.set_dark_mode(dark);
     {
-        let mut map = bufs.lock().unwrap();
+        let mut map = bufs.lock();
         for buf in map.values_mut() {
             buf.is_dark = dark;
         }
     }
-    let tab_ids: Vec<String> = bufs.lock().unwrap().keys().cloned().collect();
+    let tab_ids: Vec<String> = bufs.lock().keys().cloned().collect();
     for tid in tab_ids {
         rebuild_tab_display(window, bufs, &tid);
     }
@@ -1174,7 +1171,7 @@ fn apply_session_event_to_window(
             // We then split the rendered screen at cursor_position() so Slint
             // can insert the blinking "█" at the exact cursor cell.
             let built = {
-                let mut map = bufs.lock().unwrap();
+                let mut map = bufs.lock();
                 if let Some(buf) = map.get_mut(tab_id) {
                     // Capture scrolled-off lines into history, then render the
                     // current view (live or scrolled-back).
@@ -1214,7 +1211,7 @@ fn apply_session_event_to_window(
         SessionEvent::Connected => {
             update_tab(&|t| t.connected = true);
             update_terminal(&|t| t.status = crate::i18n::t("已连接", "Connected").into());
-            if let Some(st) = statuses.lock().unwrap().get_mut(tab_id) {
+            if let Some(st) = statuses.lock().get_mut(tab_id) {
                 st.state = 1;
             }
             if win.get_active_tab_id().as_str() == tab_id {
@@ -1241,7 +1238,7 @@ fn apply_session_event_to_window(
             );
             update_tab(&|t| t.connected = false);
             update_terminal(&|t| t.status = format!("{} — {reason}", crate::i18n::t("已断开", "Disconnected")).into());
-            if let Some(st) = statuses.lock().unwrap().get_mut(tab_id) {
+            if let Some(st) = statuses.lock().get_mut(tab_id) {
                 st.state = 2;
             }
             if win.get_active_tab_id().as_str() == tab_id {
@@ -1258,7 +1255,7 @@ fn apply_session_event_to_window(
             disks,
             procs,
         } => {
-            if let Some(st) = statuses.lock().unwrap().get_mut(tab_id) {
+            if let Some(st) = statuses.lock().get_mut(tab_id) {
                 st.cpu = cpu_percent;
                 st.mem_used_kib = mem_used_kib;
                 st.mem_total_kib = mem_total_kib;

@@ -12,7 +12,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 use std::time::{Duration, Instant};
 
 use uuid::Uuid;
@@ -540,7 +541,6 @@ async fn run_sftp(
                 let cancel = Arc::new(AtomicBool::new(false));
                 cancels
                     .lock()
-                    .unwrap()
                     .insert(file_id.clone(), cancel.clone());
                 let cancels_done = cancels.clone();
                 tokio::spawn(async move {
@@ -603,7 +603,7 @@ async fn run_sftp(
                         }
                     }
                 }
-                cancels_done.lock().unwrap().remove(&file_id);
+                cancels_done.lock().remove(&file_id);
                 });
             }
 
@@ -621,7 +621,7 @@ async fn run_sftp(
                 // Register a cancel flag up-front so CancelTransfer can flip it (#100).
                 let id = Uuid::new_v4().to_string();
                 let cancel = Arc::new(AtomicBool::new(false));
-                cancels.lock().unwrap().insert(id.clone(), cancel.clone());
+                cancels.lock().insert(id.clone(), cancel.clone());
                 let cancels_done = cancels.clone();
                 tokio::spawn(async move {
                     let n = names.len();
@@ -685,12 +685,12 @@ async fn run_sftp(
                             )));
                         }
                     }
-                    cancels_done.lock().unwrap().remove(&id);
+                    cancels_done.lock().remove(&id);
                 });
             }
 
             SftpCommand::CancelTransfer(id) => {
-                if let Some(flag) = cancels.lock().unwrap().get(&id) {
+                if let Some(flag) = cancels.lock().get(&id) {
                     flag.store(true, Ordering::Relaxed);
                 }
             }
@@ -705,7 +705,7 @@ async fn run_sftp(
                 // CancelTransfer arriving mid-upload can flip it (#100).
                 let up_id = Uuid::new_v4().to_string();
                 let cancel = Arc::new(AtomicBool::new(false));
-                cancels.lock().unwrap().insert(up_id.clone(), cancel.clone());
+                cancels.lock().insert(up_id.clone(), cancel.clone());
                 let cancels_done = cancels.clone();
                 tokio::spawn(async move {
                 // A directory source → recursively upload the whole tree (#50).
@@ -769,7 +769,7 @@ async fn run_sftp(
                         }
                     }
                 }
-                cancels_done.lock().unwrap().remove(&up_id);
+                cancels_done.lock().remove(&up_id);
                 });
             }
 

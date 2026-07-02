@@ -259,11 +259,11 @@ pub(crate) fn wire_tab_callbacks(
             if let Some(handle) = handles.borrow_mut().remove(&id) {
                 handle.close();
             }
-            if let Some(sftp) = sftp_handles.lock().unwrap().remove(&id) {
+            if let Some(sftp) = sftp_handles.lock().remove(&id) {
                 sftp.close();
             }
-            sftp_last_cwd.lock().unwrap().remove(&id);
-            bufs.lock().unwrap().remove(&id);
+            sftp_last_cwd.lock().remove(&id);
+            bufs.lock().remove(&id);
 
             // Remove from tabs + terminals models.
             let mut idx = None;

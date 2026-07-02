@@ -12,7 +12,8 @@
 
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -174,7 +175,7 @@ async fn run_serial(
                 tracing::debug!("serial write len={} bytes", bytes.len());
                 let w = writer.clone();
                 let res = tokio::task::spawn_blocking(move || {
-                    let mut guard = w.lock().unwrap();
+                    let mut guard = w.lock();
                     guard.write_all(&bytes).and_then(|_| guard.flush())
                 })
                 .await;
