@@ -512,7 +512,7 @@ pub(crate) fn wire_tab_callbacks(
                             "right" => lay.split(pane, crate::panes::Dir::Horizontal, &tab_id, false),
                             "up" => lay.split(pane, crate::panes::Dir::Vertical, &tab_id, true),
                             _ => lay.split(pane, crate::panes::Dir::Vertical, &tab_id, false),
-                        }
+                        };
                     }
                     _ => {
                         // move logic (all tabs including welcome)
