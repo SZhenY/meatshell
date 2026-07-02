@@ -282,19 +282,6 @@ export component Welcome inherits Rectangle {
                         clicked => { root.collapse(); }
                     }
                 }
-                if root.compact : HorizontalLayout {
-                    spacing: 8px;
-                    PrimaryButton {
-                        text: @tr("+ New session");
-                        clicked => { root.new-session(); }
-                    }
-                    Text {
-                        text: root.import-hint;
-                        color: Theme.text-muted;
-                        font-size: Theme.fs-sm;
-                        vertical-alignment: center;
-                    }
-                }
                 // Tab mode: single row — button in top-right corner.
                 if !root.compact : HorizontalLayout {
                     spacing: 8px;
