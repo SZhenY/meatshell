@@ -468,8 +468,13 @@ pub(crate) fn wire_tab_callbacks(
         let weak = window.as_weak();
         let layout = layout.clone();
         let content_size = content_size.clone();
-        window.on_tab_drag_move(move |_tab_id: SharedString, x: f32, y: f32| {
+        window.on_tab_drag_move(move |tab_id: SharedString, x: f32, y: f32| {
             if let Some(w) = weak.upgrade() {
+                // Welcome tab can't be split — suppress edge highlights
+                if tab_id.as_str() == "welcome" {
+                    w.set_drag_active(false);
+                    return;
+                }
                 match drag_target(&layout.borrow(), content_size.get(), x, y) {
                     Some((_, _, (hx, hy, hw, hh))) => {
                         w.set_drag_active(true);
@@ -497,28 +502,20 @@ pub(crate) fn wire_tab_callbacks(
             let tab_id = tab_id.to_string();
             let target = drag_target(&layout.borrow(), content_size.get(), x, y);
             if let Some((pane, zone, _)) = target {
-                if tab_id == "welcome" {
-                    if let Some(w) = weak.upgrade() {
-                        w.set_drag_active(false);
-                    }
-                    return;
-                }
                 let mut lay = layout.borrow_mut();
                 let src = lay.leaf_of_tab(&tab_id);
                 match zone {
-                    "left" => {
-                        lay.split(pane, crate::panes::Dir::Horizontal, &tab_id, true);
-                    }
-                    "right" => {
-                        lay.split(pane, crate::panes::Dir::Horizontal, &tab_id, false);
-                    }
-                    "up" => {
-                        lay.split(pane, crate::panes::Dir::Vertical, &tab_id, true);
-                    }
-                    "down" => {
-                        lay.split(pane, crate::panes::Dir::Vertical, &tab_id, false);
+                    "left" | "right" | "up" | "down" if tab_id != "welcome" => {
+                        // split logic (non-welcome tabs only)
+                        match zone {
+                            "left" => lay.split(pane, crate::panes::Dir::Horizontal, &tab_id, true),
+                            "right" => lay.split(pane, crate::panes::Dir::Horizontal, &tab_id, false),
+                            "up" => lay.split(pane, crate::panes::Dir::Vertical, &tab_id, true),
+                            _ => lay.split(pane, crate::panes::Dir::Vertical, &tab_id, false),
+                        }
                     }
                     _ => {
+                        // move logic (all tabs including welcome)
                         if src != Some(pane) {
                             lay.move_tab(&tab_id, pane);
                         }
