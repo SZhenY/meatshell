@@ -40,7 +40,9 @@ jobs:
 
       - name: Publish meatshell-bin to the AUR
         # Skips cleanly until the AUR SSH key secret is configured.
-        if: ${{ secrets.AUR_SSH_PRIVATE_KEY != '' }}
+        if: env.AUR_SSH_PRIVATE_KEY != ''
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
         uses: KSXGitHub/github-actions-deploy-aur@v2.7.2
         with:
           pkgname: meatshell-bin
