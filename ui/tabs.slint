@@ -280,12 +280,12 @@ export component TabBar inherits Rectangle {
                 Rectangle { height: 1px; background: Theme.border-subtle; }
                 TabMenuItem {
                     label: @tr("Split right");
-                    enabled: root.tabs.length > 1;
+                    enabled: root.tabs.length > 1 && root.menu-target != "welcome";
                     clicked => { root.tab-split(root.menu-target, "right"); }
                 }
                 TabMenuItem {
                     label: @tr("Split down");
-                    enabled: root.tabs.length > 1;
+                    enabled: root.tabs.length > 1 && root.menu-target != "welcome";
                     clicked => { root.tab-split(root.menu-target, "down"); }
                 }
                 Rectangle { height: 1px; background: Theme.border-subtle; }

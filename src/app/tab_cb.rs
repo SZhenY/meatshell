@@ -432,10 +432,11 @@ pub(crate) fn wire_tab_callbacks(
                 let tab_id = tab_id.to_string();
                 {
                     let mut lay = layout.borrow_mut();
-                    let can = lay
-                        .leaf(pane_id as u64)
-                        .map(|l| l.tabs.len() > 1 && l.tabs.iter().any(|t| t == &tab_id))
-                        .unwrap_or(false);
+                    let can = tab_id != "welcome"
+                        && lay
+                            .leaf(pane_id as u64)
+                            .map(|l| l.tabs.len() > 1 && l.tabs.iter().any(|t| t == &tab_id))
+                            .unwrap_or(false);
                     if !can {
                         return;
                     }
@@ -496,6 +497,12 @@ pub(crate) fn wire_tab_callbacks(
             let tab_id = tab_id.to_string();
             let target = drag_target(&layout.borrow(), content_size.get(), x, y);
             if let Some((pane, zone, _)) = target {
+                if tab_id == "welcome" {
+                    if let Some(w) = weak.upgrade() {
+                        w.set_drag_active(false);
+                    }
+                    return;
+                }
                 let mut lay = layout.borrow_mut();
                 let src = lay.leaf_of_tab(&tab_id);
                 match zone {
