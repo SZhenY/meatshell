@@ -44,6 +44,11 @@ use crate::ssh::{format_mtime, format_size, RemoteEntry, RemoteTreeNode, Session
 pub enum SftpCommand {
     /// List the contents of a remote directory.
     ListDir(String),
+    /// Refresh button: re-list the directory *and* re-sync the whole expanded
+    /// left tree, so external/own changes (deleted/created dirs) show up without
+    /// a reconnect (#189). Plain navigation uses `ListDir` to avoid the extra
+    /// per-click tree round-trips.
+    RefreshDir(String),
     /// Toggle a directory node in the tree (expand if collapsed, collapse if expanded).
     ToggleTreeNode(String),
     /// Download a remote file to a local directory.
@@ -92,6 +97,9 @@ pub struct SftpHandle {
 impl SftpHandle {
     pub fn list_dir(&self, path: String) {
         let _ = self.commands.send(SftpCommand::ListDir(path));
+    }
+    pub fn refresh_dir(&self, path: String) {
+        let _ = self.commands.send(SftpCommand::RefreshDir(path));
     }
     pub fn download(&self, remote: String, local_dir: String) {
         let _ = self
@@ -155,6 +163,42 @@ impl SftpHandle {
 /// and requests the `sftp` subsystem. Events (directory listings, progress,
 /// errors) are sent back via `events`, which is the same sender used by the
 /// terminal's shell session.
+/// Turn an SFTP-worker failure into a status-bar message.
+///
+/// SFTP runs on its own SSH connection, fully separate from the shell PTY, so
+/// when it can't connect the terminal keeps working — we just surface why in the
+/// SFTP panel. The common bastion/jump-host case is "shell is allowed but the
+/// `sftp` subsystem is not", which shows up as a failed subsystem request /
+/// channel / handshake (or an explicit "permission denied"). For that family we
+/// give a plain-language hint instead of the raw russh error (#190).
+fn friendly_sftp_error(err: &anyhow::Error) -> String {
+    let chain = err
+        .chain()
+        .map(|e| e.to_string().to_lowercase())
+        .collect::<Vec<_>>()
+        .join(" | ");
+    let permission_like = [
+        "subsystem",       // server refused the `sftp` subsystem request
+        "sftp channel",    // channel_open_session refused
+        "sftp handshake",  // subsystem opened but no SFTP server behind it
+        "permission",
+        "denied",
+        "prohibited",      // "administratively prohibited"
+        "not allowed",
+    ]
+    .iter()
+    .any(|k| chain.contains(k));
+    if permission_like {
+        t(
+            "SFTP 不可用,请检查是否有访问权限(服务器可能未开放 SFTP)",
+            "SFTP unavailable — check whether you have permission (server may not allow SFTP)",
+        )
+        .to_string()
+    } else {
+        format!("{}: {err:#}", t("SFTP 错误", "SFTP error"))
+    }
+}
+
 pub fn spawn_sftp(
     runtime: &tokio::runtime::Handle,
     session: Session,
@@ -165,7 +209,7 @@ pub fn spawn_sftp(
     let events_err = events.clone();
     let join = runtime.spawn(async move {
         if let Err(err) = run_sftp(session, cmd_rx, self_tx, events).await {
-            let _ = events_err.send(SessionEvent::SftpStatus(format!("{}: {err:#}", t("SFTP 错误", "SFTP error"))));
+            let _ = events_err.send(SessionEvent::SftpStatus(friendly_sftp_error(&err)));
         }
     });
     SftpHandle {
@@ -211,6 +255,33 @@ fn build_tree_nodes(
                 build_tree_nodes(child_path, depth + 1, expanded, tree_dirs, nodes);
             }
         }
+    }
+}
+
+/// Rebuild the flat tree node list from the current cache and push it to the UI.
+fn emit_tree(
+    tree_dirs: &std::collections::HashMap<String, Vec<(String, String)>>,
+    tree_expanded: &std::collections::HashSet<String>,
+    events: &UnboundedSender<SessionEvent>,
+) {
+    let mut nodes = Vec::new();
+    build_tree_nodes("/", 0, tree_expanded, tree_dirs, &mut nodes);
+    let _ = events.send(SessionEvent::SftpTreeUpdate(nodes));
+}
+
+/// Re-fetch a directory's sub-directories into the tree cache, but only if that
+/// directory is already known to the tree (root or previously expanded) — so a
+/// mutation under a collapsed/unknown branch doesn't graft unrelated nodes in.
+/// This is how create/delete/rename keep the left tree in sync without a
+/// reconnect (#189).
+async fn sync_tree_dir(
+    sftp: &SftpSession,
+    dir: &str,
+    tree_dirs: &mut std::collections::HashMap<String, Vec<(String, String)>>,
+) {
+    if tree_dirs.contains_key(dir) {
+        let dirs = list_dirs_only_impl(sftp, dir).await.unwrap_or_default();
+        tree_dirs.insert(dir.to_string(), dirs);
     }
 }
 
@@ -410,6 +481,33 @@ async fn run_sftp(
                         let _ = events.send(SessionEvent::SftpError(list_error_msg(&path, &e)));
                     }
                 }
+            }
+
+            SftpCommand::RefreshDir(path) => {
+                // File panel — same as ListDir.
+                let _ = events.send(SessionEvent::SftpStatus(format!("{} {}...", t("加载", "Loading"), path)));
+                match list_dir_impl(&sftp, &path).await {
+                    Ok(entries) => {
+                        let _ = events.send(SessionEvent::SftpEntries {
+                            path: path.clone(),
+                            entries,
+                        });
+                        let _ = events.send(SessionEvent::SftpStatus(path.clone()));
+                    }
+                    Err(e) => {
+                        let _ = events.send(SessionEvent::SftpError(list_error_msg(&path, &e)));
+                    }
+                }
+                // Tree — re-fetch every currently-expanded directory so deleted /
+                // created folders sync without a reconnect (#189). Stale entries
+                // whose parent no longer lists them are simply never walked by
+                // build_tree_nodes, so they drop out on the rebuild.
+                let expanded: Vec<String> = tree_expanded.iter().cloned().collect();
+                for dir in expanded {
+                    let dirs = list_dirs_only_impl(&sftp, &dir).await.unwrap_or_default();
+                    tree_dirs.insert(dir, dirs);
+                }
+                emit_tree(&tree_dirs, &tree_expanded, &events);
             }
 
             SftpCommand::ToggleTreeNode(path) => {
@@ -704,6 +802,15 @@ async fn run_sftp(
                                 entries,
                             });
                         }
+                        // Keep the left directory tree in sync (#189): drop the
+                        // deleted folder and any cached descendants, then re-list
+                        // the parent's sub-dirs so the deleted node disappears
+                        // without needing a reconnect.
+                        let prefix = format!("{}/", path.trim_end_matches('/'));
+                        tree_dirs.retain(|p, _| p != &path && !p.starts_with(&prefix));
+                        tree_expanded.retain(|p| p != &path && !p.starts_with(&prefix));
+                        sync_tree_dir(&sftp, &parent, &mut tree_dirs).await;
+                        emit_tree(&tree_dirs, &tree_expanded, &events);
                         let _ =
                             events.send(SessionEvent::SftpStatus(format!("{}: {}", t("已删除", "Deleted"), filename)));
                     }
@@ -722,6 +829,18 @@ async fn run_sftp(
                             t("已重命名", "Renamed"),
                             base_name(&to)
                         )));
+                        // Sync the left tree (#189): drop the old name + cached
+                        // descendants, then re-list both the source and the
+                        // destination parent (rename can also move across dirs).
+                        let prefix = format!("{}/", from.trim_end_matches('/'));
+                        tree_dirs.retain(|p, _| p != &from && !p.starts_with(&prefix));
+                        tree_expanded.retain(|p| p != &from && !p.starts_with(&prefix));
+                        sync_tree_dir(&sftp, &refresh, &mut tree_dirs).await;
+                        let to_parent = parent_dir(&to);
+                        if to_parent != refresh {
+                            sync_tree_dir(&sftp, &to_parent, &mut tree_dirs).await;
+                        }
+                        emit_tree(&tree_dirs, &tree_expanded, &events);
                     }
                     Err(e) => {
                         let _ = events.send(SessionEvent::SftpStatus(format!(
@@ -771,6 +890,9 @@ async fn run_sftp(
                             t("已新建文件夹", "Folder created"),
                             base_name(&path)
                         )));
+                        // Show the new folder in the left tree too (#189).
+                        sync_tree_dir(&sftp, &refresh, &mut tree_dirs).await;
+                        emit_tree(&tree_dirs, &tree_expanded, &events);
                     }
                     Err(e) => {
                         let _ = events.send(SessionEvent::SftpStatus(format!(

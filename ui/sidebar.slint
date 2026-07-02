@@ -199,11 +199,14 @@ component NetGraph inherits VerticalLayout {
 component StatusBlock inherits Rectangle {
     in property <int> conn-state;
     in property <string> connection-state;
+    in property <string> conn-host;        // clean IP/host to copy ("" = not clickable) (#192)
     in property <string> collapse-icon;   // chevron pointing toward the docked edge
     in property <bool> collapsed: false;  // true → disable all interactions
     callback dock-drag-move(length, length);
     callback dock-drag-end();
     callback collapse();
+    callback copy-host(string);
+    property <bool> copied;                // shows a brief "Copied" badge after a click
     TouchArea {
         enabled: !root.collapsed;
         mouse-cursor: move;
@@ -243,7 +246,45 @@ component StatusBlock inherits Rectangle {
                        horizontal-alignment: center; vertical-alignment: center; }
             }
         }
-        Text { text: root.connection-state; color: Theme.text-secondary; font-size: Theme.fs-sm; }
+        // IP / host line — click to copy (#192). Only interactive when there's a
+        // real host (skips the "Not connected" placeholder). Hover gives a hand
+        // cursor + subtle highlight; a brief "Copied" badge confirms the copy.
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            ip-wrap := Rectangle {
+                width: ip-txt.preferred-width + (root.conn-host != "" ? 10px : 0px);
+                height: ip-txt.preferred-height + 4px;
+                border-radius: Theme.radius-sm;
+                background: (root.conn-host != "" && ip-ta.has-hover) ? Theme.bg-hover : transparent;
+                ip-txt := Text {
+                    x: root.conn-host != "" ? 5px : 0px;
+                    y: (parent.height - self.height) / 2;
+                    text: root.connection-state;
+                    color: Theme.text-secondary; font-size: Theme.fs-sm;
+                }
+                ip-ta := TouchArea {
+                    enabled: root.conn-host != "";
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.copy-host(root.conn-host);
+                        root.copied = true;
+                        copied-timer.running = true;
+                    }
+                }
+            }
+            if root.copied : Text {
+                text: @tr("Copied");
+                color: Theme.success; font-size: Theme.fs-sm;
+                vertical-alignment: center;
+            }
+        }
+    }
+    // Auto-hide the "Copied" badge a moment after the click.
+    copied-timer := Timer {
+        interval: 1400ms;
+        running: false;
+        triggered => { root.copied = false; self.running = false; }
     }
 }
 
@@ -363,6 +404,7 @@ component DiskBlock inherits Rectangle {
 // @tr("Status") column but kept minimal for the v0.1 baseline.
 export component Sidebar inherits Rectangle {
     in property <string> connection-state: @tr("Not connected");
+    in property <string> conn-host;                  // clean IP/host to copy (#192)
     in property <int> conn-state;                    // 0 gray / 1 green / 2 yellow
     in property <string> resource-title: @tr("Local resources");
     in property <float> cpu-percent;
@@ -386,6 +428,7 @@ export component Sidebar inherits Rectangle {
     in property <string> app-version;
     callback select-net-iface(string);
     callback show-processes();           // open the process monitor popup (#23)
+    callback copy-host(string);          // copy the connection IP/host to clipboard (#192)
     // Drag-to-dock: the header strip is a grab handle; coordinates are reported
     // in window space so the AppWindow can compute the target edge (#dock).
     callback dock-drag-move(length /* abs-x */, length /* abs-y */);
@@ -431,10 +474,12 @@ export component Sidebar inherits Rectangle {
             collapsed: root.collapsed;
             conn-state: root.conn-state;
             connection-state: root.connection-state;
+            conn-host: root.conn-host;
             collapse-icon: root.collapse-icon;
             dock-drag-move(x, y) => { root.dock-drag-move(x, y); }
             dock-drag-end() => { root.dock-drag-end(); }
             collapse() => { root.toggle-collapse(); }
+            copy-host(h) => { root.copy-host(h); }
         }
         Rectangle { height: 1px; background: Theme.border-subtle; }
         StatsBlock {

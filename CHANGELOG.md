@@ -3,6 +3,31 @@
 All notable changes are documented here. 本文件记录所有重要变更。
 中英对照（English first, 中文在后）.
 
+## [0.5.1] - 2026-07-01
+
+### Added / 新增
+
+- **会话备注 + 快捷命令「点击是否自动回车」选项(B站建议)
+  1. 会话备注:新建/编辑会话对话框加「备注(可选)」字段,存跳板机信息、
+         账号提示、负责人等任意文字。Session 新增 note 字段(serde 默认空,兼容
+         老配置),随会话持久化。2. 快捷命令回车选项:新增/编辑快捷命令时多一个开关「点击即发送执行」
+         (默认开,保持现状)。关闭后,点击该快捷命令只把命令填入输入框、不加
+         末尾回车、不发送,方便先微调再回车发送(仿 FinalShell)。QuickCommand
+         新增 send_enter 字段(serde 默认 true,老命令照常点击即执行)。 涉及 config.rs(两个字段 + default_true)、app.rs(两条 plumbing)、 session_dialog.slint(备注字段)、app.slint(对话框属性/回调/复选框)、 terminal_view.slint(QuickCmd.send-enter + 点击分支)。
+
+---
+
+  per-session note + quick-command "send on click" toggle (bilibili suggestions)
+
+  1. Session note: the new/edit session dialog gains an optional "Note" field for
+       stashing jump-host details, credential hints, an owner, etc. Session gets a
+       `note` field (serde default empty, so old configs load) persisted with it.2. Quick-command Return toggle: adding/editing a quick command now has a "Send +
+       run on click" switch (on by default = current behaviour). When off, clicking
+       the command only drops it into the input box — no trailing Return, not sent —
+       so it can be tweaked before sending (like FinalShell). QuickCommand gets a
+       `send_enter` field (serde default true, existing commands keep executing).Touches config.rs (two fields + default_true), app.rs (both plumbings), session_dialog.slint (note field), app.slint (dialog props/callbacks/checkbox), terminal_view.slint (QuickCmd.send-enter + the click branch).
+
+
 ## [0.5.0] - 2026-06-30
 
 ### Added / 新增

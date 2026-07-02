@@ -15,8 +15,8 @@ JVM 压到几十 MB 原生级别。
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/02-terminal-btop.png" alt="终端 + SFTP" width="800"><br>
-  <em>多标签页终端（btop 全屏渲染）+ 底部 SFTP 文件浏览 + 远端资源监控</em>
+  <img src="docs/screenshots/02-terminal-htop.png" alt="终端 + SFTP" width="800"><br>
+  <em>多标签页终端（htop 全屏渲染）+ 底部 SFTP 文件浏览 + 远端资源监控</em>
 </p>
 
 ## 下载与安装
@@ -85,7 +85,7 @@ open /Applications/meatshell.app
 
 - [ ] 已知主机 (known_hosts) 校验
 - [ ] 会话密码改用 OS 钥匙串存储
-- [ ] 多标签页终端分屏
+- [x] 多标签页终端分屏
 
 ## 技术栈
 

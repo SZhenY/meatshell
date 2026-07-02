@@ -1,6 +1,3 @@
-// Wired into the UI incrementally (M2+); allow unused items until then.
-#![allow(dead_code)]
-
 //! Split-pane layout tree (v0.5, IDEA-style nested splits).
 //!
 //! Slint can't render recursive components, so the nestable split layout lives

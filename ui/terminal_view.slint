@@ -44,6 +44,9 @@ export struct QuickCmd {
     group-header: string,
     collapsed: bool,
     orig-index: int,
+    // false → clicking only fills the input box (no trailing Return), so the
+    // command can be tweaked before sending; true → send + execute (B站 suggestion).
+    send-enter: bool,
 }
 
 // --- MenuItem --------------------------------------------------------------
@@ -1098,7 +1101,15 @@ export component TerminalView inherits Rectangle {
                                 q-item-ta := TouchArea {
                                     mouse-cursor: pointer;
                                     clicked => {
-                                        root.run-command(q.command, root.send-to-all);
+                                        if (q.send-enter) {
+                                            // Send + execute (trailing Return).
+                                            root.run-command(q.command, root.send-to-all);
+                                        } else {
+                                            // Only fill the input box so it can be
+                                            // tweaked before sending (B站 suggestion).
+                                            cmd-input.text = q.command;
+                                            cmd-input.focus();
+                                        }
                                         root.quick-open = false;
                                     }
                                     pointer-event(e) => {

@@ -1,7 +1,8 @@
 //! A single, size-capped diagnostic log file (#86).
 //!
-//! Writes go to `<data_dir>/error.log` (portable-first; see [`crate::config::data_dir`]
-//! — #141). The file is capped at a fixed size:
+//! Writes go to `<log_dir>/error.log` — its own `log/` folder beside the exe
+//! (portable-first; see [`crate::config::log_dir`]), kept separate from the
+//! config dir. The file is capped at a fixed size:
 //! when the next write would exceed the cap it is truncated to empty and writing
 //! restarts from the top — so there is always exactly one file, at most `cap`
 //! bytes, that auto-overwrites its old content. This lets users (e.g. behind a
@@ -12,9 +13,9 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-/// `<data_dir>/error.log`, next to `sessions.json`.
+/// `<log_dir>/error.log`, in its own `log/` folder beside the exe.
 pub fn path() -> Option<PathBuf> {
-    let dir = crate::config::data_dir();
+    let dir = crate::config::log_dir();
     let _ = std::fs::create_dir_all(&dir);
     Some(dir.join("error.log"))
 }

@@ -8,6 +8,7 @@
 //!   • a derived [`Palette`] (accent colour + light/dark + average tint),
 //! so the whole UI can recolour itself to match the image ("immersive" mode).
 
+use rayon::prelude::*;
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 
 /// Render size for the built-in wallpapers. `image-fit: cover` in the UI scales
@@ -50,6 +51,7 @@ pub fn load(id: &str) -> Option<Wallpaper> {
         "builtin:light" => render_builtin(false),
         "builtin:dark" => render_builtin(true),
         "builtin:tech" => render_tech(),
+        "builtin:miku" => decode_miku()?,
         path => decode_custom(path)?,
     };
     let palette = derive_palette(&buf);
@@ -61,7 +63,7 @@ pub fn load(id: &str) -> Option<Wallpaper> {
 
 /// True if `id` names one of the procedurally-drawn built-ins.
 pub fn is_builtin(id: &str) -> bool {
-    id == "builtin:light" || id == "builtin:dark" || id == "builtin:tech"
+    id == "builtin:light" || id == "builtin:dark" || id == "builtin:tech" || id == "builtin:miku"
 }
 
 // ── Built-in wallpapers ───────────────────────────────────────────────────────
@@ -83,28 +85,27 @@ fn render_builtin(dark: bool) -> SharedPixelBuffer<Rgba8Pixel> {
     let glow_r = W as f32 * 0.6;
     let glow_strength = if dark { 0.38 } else { 0.22 };
 
-    for y in 0..H {
-        for x in 0..W {
-            // Diagonal gradient factor (0 at top-left → 1 at bottom-right).
-            let t = ((x as f32 / W as f32) + (y as f32 / H as f32)) * 0.5;
-            let mut r = lerp(c0.0, c1.0, t);
-            let mut g = lerp(c0.1, c1.1, t);
-            let mut b = lerp(c0.2, c1.2, t);
+    px.par_chunks_mut(W as usize)
+        .enumerate()
+        .for_each(|(y, row)| {
+            for x in 0..W {
+                let t = ((x as f32 / W as f32) + (y as f32 / H as f32)) * 0.5;
+                let mut r = lerp(c0.0, c1.0, t);
+                let mut g = lerp(c0.1, c1.1, t);
+                let mut b = lerp(c0.2, c1.2, t);
 
-            // Soft radial glow toward the accent (quadratic falloff).
-            let dx = x as f32 - glow_cx;
-            let dy = y as f32 - glow_cy;
-            let d = (dx * dx + dy * dy).sqrt() / glow_r;
-            let gf = (1.0 - d).clamp(0.0, 1.0);
-            let gf = gf * gf * glow_strength;
-            r = blend(r, glow.0, gf);
-            g = blend(g, glow.1, gf);
-            b = blend(b, glow.2, gf);
+                let dx = x as f32 - glow_cx;
+                let dy = y as f32 - glow_cy;
+                let d = (dx * dx + dy * dy).sqrt() / glow_r;
+                let gf = (1.0 - d).clamp(0.0, 1.0);
+                let gf = gf * gf * glow_strength;
+                r = blend(r, glow.0, gf);
+                g = blend(g, glow.1, gf);
+                b = blend(b, glow.2, gf);
 
-            let i = (y * W + x) as usize;
-            px[i] = Rgba8Pixel { r, g, b, a: 255 };
-        }
-    }
+                row[x as usize] = Rgba8Pixel { r, g, b, a: 255 };
+            }
+        });
     buf
 }
 
@@ -123,76 +124,72 @@ fn render_tech() -> SharedPixelBuffer<Rgba8Pixel> {
     let sun_cy = horizon - hf * 0.16;
     let sun_r = hf * 0.17;
 
-    for y in 0..H {
-        let yf = y as f32;
-        for x in 0..W {
-            let xf = x as f32;
+    px.par_chunks_mut(W as usize)
+        .enumerate()
+        .for_each(|(y, row)| {
+            let yf = y as f32;
+            for x in 0..W {
+                let xf = x as f32;
 
-            // Base sky / ground gradient.
-            let (mut r, mut g, mut b) = if yf < horizon {
-                let t = yf / horizon; // 0 top → 1 horizon
-                let glow = t * t * t; // teal glow swells toward the horizon
-                (6.0 + 10.0 * glow, 9.0 + 40.0 * glow, 22.0 + 70.0 * glow)
-            } else {
-                let t = (yf - horizon) / (hf - horizon); // 0 horizon → 1 bottom
-                (14.0 + 12.0 * t, 14.0 - 8.0 * t, 34.0 + 6.0 * t)
-            };
-
-            // Glowing planet with synth scan-gaps in its lower half.
-            let sdx = xf - sun_cx;
-            let sdy = yf - sun_cy;
-            let sd = (sdx * sdx + sdy * sdy).sqrt() / sun_r;
-            if sd < 1.0 && yf < horizon {
-                let vt = ((yf - (sun_cy - sun_r)) / (2.0 * sun_r)).clamp(0.0, 1.0);
-                let sr = 60.0 + 200.0 * vt;
-                let sg = 220.0 - 150.0 * vt;
-                let sb = 255.0 - 40.0 * vt;
-                let gap = if vt > 0.5 && (yf / (hf * 0.022)).fract() < 0.45 {
-                    0.0
+                let (mut r, mut g, mut b) = if yf < horizon {
+                    let t = yf / horizon;
+                    let glow = t * t * t;
+                    (6.0 + 10.0 * glow, 9.0 + 40.0 * glow, 22.0 + 70.0 * glow)
                 } else {
-                    1.0
+                    let t = (yf - horizon) / (hf - horizon);
+                    (14.0 + 12.0 * t, 14.0 - 8.0 * t, 34.0 + 6.0 * t)
                 };
-                let m = (1.0 - sd).clamp(0.0, 1.0).sqrt() * gap;
-                r = r * (1.0 - m) + sr * m;
-                g = g * (1.0 - m) + sg * m;
-                b = b * (1.0 - m) + sb * m;
+
+                let sdx = xf - sun_cx;
+                let sdy = yf - sun_cy;
+                let sd = (sdx * sdx + sdy * sdy).sqrt() / sun_r;
+                if sd < 1.0 && yf < horizon {
+                    let vt = ((yf - (sun_cy - sun_r)) / (2.0 * sun_r)).clamp(0.0, 1.0);
+                    let sr = 60.0 + 200.0 * vt;
+                    let sg = 220.0 - 150.0 * vt;
+                    let sb = 255.0 - 40.0 * vt;
+                    let gap = if vt > 0.5 && (yf / (hf * 0.022)).fract() < 0.45 {
+                        0.0
+                    } else {
+                        1.0
+                    };
+                    let m = (1.0 - sd).clamp(0.0, 1.0).sqrt() * gap;
+                    r = r * (1.0 - m) + sr * m;
+                    g = g * (1.0 - m) + sg * m;
+                    b = b * (1.0 - m) + sb * m;
+                }
+
+                if yf > horizon {
+                    let depth = yf - horizon;
+                    let hl = grid_line((hf * 7.0) / depth, 0.06);
+                    let vl = grid_line((xf - vp_x) / depth * 2.4, 0.05);
+                    let fade = 1.0 - (depth / (hf - horizon)).clamp(0.0, 1.0) * 0.5;
+                    let grid = hl.max(vl) * fade;
+                    r = r * (1.0 - grid) + 30.0 * grid;
+                    g = g * (1.0 - grid) + 230.0 * grid;
+                    b = b * (1.0 - grid) + 255.0 * grid;
+                }
+
+                let hglow = (1.0 - (yf - horizon).abs() / (hf * 0.05)).clamp(0.0, 1.0);
+                let hglow = hglow * hglow;
+                r += 40.0 * hglow;
+                g += 200.0 * hglow;
+                b += 230.0 * hglow;
+
+                if yf < horizon * 0.92 && hash2(x, y as u32) > 0.9985 {
+                    r += 200.0;
+                    g += 200.0;
+                    b += 200.0;
+                }
+
+                row[x as usize] = Rgba8Pixel {
+                    r: r.clamp(0.0, 255.0) as u8,
+                    g: g.clamp(0.0, 255.0) as u8,
+                    b: b.clamp(0.0, 255.0) as u8,
+                    a: 255,
+                };
             }
-
-            // Neon perspective grid on the ground.
-            if yf > horizon {
-                let depth = yf - horizon;
-                let hl = grid_line((hf * 7.0) / depth, 0.06);
-                let vl = grid_line((xf - vp_x) / depth * 2.4, 0.05);
-                let fade = 1.0 - (depth / (hf - horizon)).clamp(0.0, 1.0) * 0.5;
-                let grid = hl.max(vl) * fade;
-                r = r * (1.0 - grid) + 30.0 * grid;
-                g = g * (1.0 - grid) + 230.0 * grid;
-                b = b * (1.0 - grid) + 255.0 * grid;
-            }
-
-            // Bright horizon band.
-            let hglow = (1.0 - (yf - horizon).abs() / (hf * 0.05)).clamp(0.0, 1.0);
-            let hglow = hglow * hglow;
-            r += 40.0 * hglow;
-            g += 200.0 * hglow;
-            b += 230.0 * hglow;
-
-            // Sparse stars high in the sky.
-            if yf < horizon * 0.92 && hash2(x, y) > 0.9985 {
-                r += 200.0;
-                g += 200.0;
-                b += 200.0;
-            }
-
-            let i = (y * W + x) as usize;
-            px[i] = Rgba8Pixel {
-                r: r.clamp(0.0, 255.0) as u8,
-                g: g.clamp(0.0, 255.0) as u8,
-                b: b.clamp(0.0, 255.0) as u8,
-                a: 255,
-            };
-        }
-    }
+        });
     buf
 }
 
@@ -213,9 +210,21 @@ fn hash2(x: u32, y: u32) -> f32 {
 // ── Custom wallpapers ─────────────────────────────────────────────────────────
 
 fn decode_custom(path: &str) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
-    let img = image::open(path).ok()?.to_rgba8();
+    Some(to_buffer(image::open(path).ok()?.to_rgba8()))
+}
+
+/// The bundled "Miku" wallpaper, embedded in the binary so it ships as a
+/// built-in (the procedural built-ins are drawn in code; this one is a real
+/// image). The asset is pre-compressed to 2560×1440 (#new-user-defaults).
+fn decode_miku() -> Option<SharedPixelBuffer<Rgba8Pixel>> {
+    const BYTES: &[u8] = include_bytes!("../assets/miku.jpg");
+    Some(to_buffer(image::load_from_memory(BYTES).ok()?.to_rgba8()))
+}
+
+/// Downscale an oversized decoded image (preserving aspect; the UI covers it)
+/// and pack it into a Slint pixel buffer.
+fn to_buffer(img: image::RgbaImage) -> SharedPixelBuffer<Rgba8Pixel> {
     let (w, h) = img.dimensions();
-    // Downscale only oversized images; preserve aspect (the UI covers it).
     let img = if w.max(h) > MAX_EDGE {
         let scale = MAX_EDGE as f32 / w.max(h) as f32;
         let nw = ((w as f32 * scale) as u32).max(1);
@@ -227,7 +236,7 @@ fn decode_custom(path: &str) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
     let (w, h) = img.dimensions();
     let mut buf = SharedPixelBuffer::<Rgba8Pixel>::new(w, h);
     buf.make_mut_bytes().copy_from_slice(img.as_raw());
-    Some(buf)
+    buf
 }
 
 // ── Palette derivation ────────────────────────────────────────────────────────

@@ -392,3 +392,6 @@ msgstr "Close tab"
 
 msgid "Duplicate connection"
 msgstr "Duplicate connection"
+
+msgid "Copied"
+msgstr "Copied"

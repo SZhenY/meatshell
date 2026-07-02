@@ -56,6 +56,28 @@ pub fn data_dir() -> PathBuf {
     DATA_DIR.get_or_init(resolve_data_dir).clone()
 }
 
+/// Directory for diagnostic logs (`error.log`). Kept *separate* from the config
+/// dir so logs don't clutter user data: portable-first → a `log/` folder beside
+/// the executable (a sibling of `config/`), falling back to a `log/` subdir
+/// under the per-user data dir when the exe dir is read-only (Program Files etc.)
+/// (#log-dir).
+pub fn log_dir() -> PathBuf {
+    // Portable: <exe_dir>/log, sibling of the portable config/ folder.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            let log = parent.join("log");
+            if fs::create_dir_all(&log).is_ok() && dir_is_writable(&log) {
+                return log;
+            }
+        }
+    }
+    // Read-only exe dir → put logs in their own subdir under the per-user data
+    // dir (still not mixed in with sessions.json et al.).
+    let dir = data_dir().join("log");
+    let _ = fs::create_dir_all(&dir);
+    dir
+}
+
 /// Pre-0.4.15 location: the per-user OS config dir
 /// (`%APPDATA%/meatshell`, `~/.config/meatshell`, …).
 fn legacy_data_dir() -> Option<PathBuf> {
@@ -239,16 +261,61 @@ fn default_parity() -> String {
 /// the user picks anything (including "无"/none, stored as ""), their choice is
 /// saved and sticks.
 fn default_wallpaper() -> String {
+    // Serde default for the `wallpaper` field: kept at the old "幻想 3048" so an
+    // *existing* config that predates the field stays on tech — `migrate_defaults`
+    // then upgrades those still-on-tech users to miku (and leaves real choices
+    // alone). Brand-new installs get miku straight from `fresh_config`.
     "builtin:tech".to_string()
 }
-/// A brand-new config (no file yet, or the old one was corrupt). Identical to
-/// `ConfigFile::default()` except it seeds the default wallpaper, which the
-/// derived `Default` (an empty string = "none") wouldn't.
+
+/// Bump when `migrate_defaults` gains a new one-time default-layout change.
+pub const DEFAULTS_REV: u32 = 1;
+
+/// A brand-new config (no file yet, or the old one was corrupt). Seeds the
+/// new-user default layout (#new-user-defaults): miku wallpaper, welcome page as
+/// a left sidebar, resource panel docked right, a 0.38 wallpaper overlay — and
+/// marks the migration done so it isn't re-applied.
 fn fresh_config() -> ConfigFile {
     ConfigFile {
-        wallpaper: default_wallpaper(),
+        wallpaper: "builtin:miku".to_string(),
+        welcome_as_sidebar: true,
+        sidebar_dock: "right".to_string(),
+        wallpaper_overlay: 0.38,
+        defaults_rev: DEFAULTS_REV,
         ..ConfigFile::default()
     }
+}
+
+/// One-time push of the new default layout to *existing* users — but only for
+/// each item they're still leaving at the old default, so deliberate choices are
+/// never clobbered. Runs once (gated by `defaults_rev`); returns whether anything
+/// changed so the caller can persist it. (#new-user-defaults)
+fn migrate_defaults(cfg: &mut ConfigFile) -> bool {
+    if cfg.defaults_rev >= DEFAULTS_REV {
+        return false;
+    }
+    // rev 1: miku / welcome-as-sidebar / right-docked resources / 0.38 overlay.
+    if cfg.defaults_rev < 1 {
+        // Old default wallpaper → miku. A custom path, "none" (""), or any other
+        // built-in means the user chose it, so leave it.
+        if cfg.wallpaper == "builtin:tech" {
+            cfg.wallpaper = "builtin:miku".to_string();
+        }
+        // Overlay still unset (0 = "use the 0.86 default") → 0.38.
+        if cfg.wallpaper_overlay <= 0.0 {
+            cfg.wallpaper_overlay = 0.38;
+        }
+        // Never enabled the welcome sidebar → enable it.
+        if !cfg.welcome_as_sidebar {
+            cfg.welcome_as_sidebar = true;
+        }
+        // Never moved the resource panel (empty = the old left default) → right.
+        if cfg.sidebar_dock.trim().is_empty() {
+            cfg.sidebar_dock = "right".to_string();
+        }
+    }
+    cfg.defaults_rev = DEFAULTS_REV;
+    true
 }
 fn default_sidebar_width() -> f32 {
     220.0
@@ -347,6 +414,11 @@ pub struct Session {
     /// for such servers (#140).
     #[serde(default)]
     pub disable_shell_integration: bool,
+    /// Free-form note for this session — somewhere to stash extra info (jump-host
+    /// details, credentials hints, owner, etc.). Shown only in the edit dialog.
+    /// (B站 suggestion)
+    #[serde(default)]
+    pub note: String,
 }
 
 /// One SSH tunnel (#56). `kind` is "local" (-L), "remote" (-R) or
@@ -392,6 +464,7 @@ impl Session {
             flow_control: default_flow(),
             forwards: Vec::new(),
             disable_shell_integration: false,
+            note: String::new(),
         }
     }
 }
@@ -405,6 +478,15 @@ pub struct QuickCommand {
     /// Optional group/folder name. Empty = the implicit "default" group (#55).
     #[serde(default)]
     pub group: String,
+    /// Whether clicking the chip sends + executes (appends Return). `false` only
+    /// drops the command into the input box to tweak first. Defaults to `true` so
+    /// existing quick commands keep running on click. (B站 suggestion)
+    #[serde(default = "default_true")]
+    pub send_enter: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// On-disk layout. Keep additive to ease forward-compat.
@@ -509,6 +591,17 @@ pub struct ConfigFile {
     /// Settings-panel font scale, percent (80–160). 0 = 100% default (v0.5).
     #[serde(default)]
     pub panel_font: u32,
+    /// Disable the startup "new version available" check (#184). Default false =
+    /// keep checking (preserves existing behaviour for upgrading users); turning
+    /// it on stops the GitHub releases query and the banner.
+    #[serde(default)]
+    pub update_check_disabled: bool,
+    /// One-time default-layout migration marker (#new-user-defaults). 0 = config
+    /// predates the migration. `migrate_defaults` bumps it to `DEFAULTS_REV` after
+    /// pushing the new look (miku wallpaper / welcome-as-sidebar / right-docked
+    /// resource panel / 0.38 overlay) to users still sitting on the old defaults.
+    #[serde(default)]
+    pub defaults_rev: u32,
 }
 
 /// Portable export file (issue #46): sessions with everything in plaintext
@@ -534,15 +627,14 @@ pub struct ConfigStore {
 }
 
 /// Remove duplicate entries in place, keeping the *last* (most recent)
-/// occurrence of each and preserving relative order (#113). The list is capped
-/// at 200, so the quadratic scan is trivial.
+/// occurrence of each and preserving relative order (#113).
 fn dedup_keep_last(items: &mut Vec<String>) {
-    let mut i = 0;
-    while i < items.len() {
-        if items[i + 1..].contains(&items[i]) {
+    let mut seen = std::collections::HashSet::new();
+    let mut i = items.len();
+    while i > 0 {
+        i -= 1;
+        if !seen.insert(items[i].clone()) {
             items.remove(i);
-        } else {
-            i += 1;
         }
     }
 }
@@ -644,6 +736,7 @@ impl ConfigStore {
 
         let key = Self::load_or_create_key(&config_dir)?;
 
+        let mut migrated = false;
         let cache = if path.exists() {
             let raw = fs::read_to_string(&path)
                 .with_context(|| format!("failed to read {}", path.display()))?;
@@ -661,6 +754,9 @@ impl ConfigStore {
                     // Clean up any duplicate history accumulated before #113,
                     // keeping the last (most recent) occurrence of each command.
                     dedup_keep_last(&mut cfg.command_history);
+                    // One-time push of the new default layout to existing users
+                    // (only for items they never changed). (#new-user-defaults)
+                    migrated = migrate_defaults(&mut cfg);
                     cfg
                 }
                 Err(err) => {
@@ -677,7 +773,15 @@ impl ConfigStore {
             fresh_config()
         };
 
-        Ok(Self { path, cache, key })
+        let store = Self { path, cache, key };
+        // Persist the migration so it runs exactly once (and so a later opt-out —
+        // e.g. turning the welcome sidebar back off — isn't reverted next launch).
+        if migrated {
+            if let Err(e) = store.save() {
+                tracing::warn!("failed to persist default-layout migration: {e:#}");
+            }
+        }
+        Ok(store)
     }
 
     fn config_path() -> Result<PathBuf> {
@@ -955,12 +1059,21 @@ impl ConfigStore {
     pub fn set_welcome_collapsed(&mut self, v: bool) {
         self.cache.welcome_collapsed = v;
     }
+    /// Whether the startup new-version check is enabled (#184).
+    pub fn update_check_enabled(&self) -> bool {
+        !self.cache.update_check_disabled
+    }
+    pub fn set_update_check_enabled(&mut self, enabled: bool) {
+        self.cache.update_check_disabled = !enabled;
+    }
     pub fn wallpaper_overlay(&self) -> f32 {
         let a = self.cache.wallpaper_overlay;
-        if a <= 0.0 { 0.86 } else { a.clamp(0.40, 1.0) }
+        // Floor lowered 0.40 → 0.30 so the new 0.38 default (and more see-through
+        // panels) is reachable (#new-user-defaults).
+        if a <= 0.0 { 0.86 } else { a.clamp(0.30, 1.0) }
     }
     pub fn set_wallpaper_overlay(&mut self, v: f32) {
-        self.cache.wallpaper_overlay = v.clamp(0.40, 1.0);
+        self.cache.wallpaper_overlay = v.clamp(0.30, 1.0);
     }
     pub fn panel_font(&self) -> u32 {
         if self.cache.panel_font == 0 { 100 } else { self.cache.panel_font }

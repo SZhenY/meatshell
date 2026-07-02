@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <!--
+    跨屏 DPI 突变修复 (#194) / Cross-monitor DPI jump fix (#194)
+    ============================================================
+    在多显示器、不同缩放比例的扩展模式下，把窗口从一块屏拖到另一块屏时，
+    窗口大小和鼠标相对位置会突然跳变。根因是进程的 DPI 感知级别要在任何
+    与 DPI 相关的 Win32 API 调用之前确定下来：winit 虽然在事件循环创建时
+    调用 SetProcessDpiAwarenessContext(PerMonitorV2)，但那是运行时调用，
+    存在时序竞争——一旦有别的代码先碰了 DPI 相关 API，这个切换就会静默失败，
+    进程退回到 System-DPI-aware，于是跨屏时由 Windows 做位图拉伸 → 突变。
+
+    清单 (manifest) 里声明的 DPI 感知优先级高于运行时 API，且在任何代码
+    执行之前就被系统应用，彻底消除时序竞争。这是微软与 winit 都推荐的做法。
+
+    The DPI awareness level must be locked in before any DPI-dependent Win32
+    API runs. winit calls SetProcessDpiAwarenessContext(PerMonitorV2) at event
+    loop creation, but that runtime call can silently fail if anything touches a
+    DPI API first, leaving the process System-DPI-aware → Windows bitmap-stretches
+    the window across monitors with different scaling → the jump in #194.
+    Declaring awareness in the manifest takes precedence over the runtime call and
+    is applied before any code runs, removing the race entirely.
+  -->
+
+  <assemblyIdentity
+    type="win32"
+    name="meatshell"
+    version="1.0.0.0"
+    processorArchitecture="*"/>
+
+  <!-- Per-Monitor DPI Awareness V2 (Win10 1703+), 回退到 PerMonitor (Win8.1)。 -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2, PerMonitor</dpiAwareness>
+    </windowsSettings>
+  </application>
+
+  <!-- 声明对各 Windows 版本的兼容性，确保按现代行为(含 DPI)运行。 -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/>
+      <!-- Windows 8 -->
+      <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"/>
+      <!-- Windows 7 -->
+      <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}"/>
+    </application>
+  </compatibility>
+
+  <!-- 以普通用户权限运行（不请求管理员提权）。 -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+</assembly>

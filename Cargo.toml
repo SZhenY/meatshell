@@ -1,6 +1,6 @@
 [package]
 name = "meatshell"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 authors = ["meatshell contributors"]
 description = "A lightweight FinalShell-style SSH/terminal client written in Rust + Slint"
@@ -80,6 +80,7 @@ ureq = { version = "2", features = ["tls"] }
 # and the embedded PNG window icon on Linux. On Windows the icon comes from the
 # .ico embedded by winresource at link time; on macOS from the app bundle.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
+rayon = "1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Native Wayland clipboard (wlr-data-control protocol) so copy/paste works on

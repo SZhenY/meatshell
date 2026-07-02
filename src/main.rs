@@ -89,9 +89,10 @@ fn init_tracing() {
         .with_writer(std::io::stderr)
         .with_filter(env_filter);
 
-    // One file, capped at 5 MiB, auto-overwriting when full.
+    // One file, capped at 50 MiB, auto-overwriting when full (5 MiB was too
+    // small to diagnose anything useful).
     let file_layer = errlog::path()
-        .and_then(|p| errlog::CappedFile::open(p, 5 * 1024 * 1024).ok())
+        .and_then(|p| errlog::CappedFile::open(p, 50 * 1024 * 1024).ok())
         .map(|cf| {
             fmt::layer()
                 .with_ansi(false)

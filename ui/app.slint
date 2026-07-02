@@ -231,6 +231,7 @@ export component AppWindow inherits Window {
 
     // --- Sidebar data ------------------------------------------------------
     in property <string> connection-state: @tr("Not connected");
+    in property <string> conn-host;             // clean IP/host for click-to-copy (#192)
     in property <int> conn-state;                       // 0 gray / 1 green / 2 yellow
     in property <string> resource-title: @tr("Local resources");    // @tr("Local resources") | @tr("Server resources")
     in property <float> cpu-percent;
@@ -334,9 +335,10 @@ export component AppWindow inherits Window {
     in-out property <string> qcm-name;                // manage form: name field
     in-out property <string> qcm-command;             // manage form: command field
     in-out property <string> qcm-group;               // manage form: group field (#55)
+    in-out property <bool> qcm-send-enter: true;      // click sends+executes (B站)
     in-out property <int> qcm-edit-index: -1;         // -1 = add, >=0 = edit that entry (#55)
-    callback add-quick-command(string /* name */, string /* command */, string /* group */);
-    callback save-quick-command(int /* index */, string /* name */, string /* command */, string /* group */);
+    callback add-quick-command(string /* name */, string /* command */, string /* group */, bool /* send-enter */);
+    callback save-quick-command(int /* index */, string /* name */, string /* command */, string /* group */, bool /* send-enter */);
     callback delete-quick-command(int /* index */);
     callback edit-quick-command(int /* index */);
     callback duplicate-quick-command(int /* index */);
@@ -412,6 +414,8 @@ export component AppWindow inherits Window {
     // Render the welcome/session list as a left sidebar instead of a tab (v0.5).
     in-out property <bool> welcome-as-sidebar: false;
     callback set-welcome-as-sidebar(bool);         // apply + persist
+    in-out property <bool> update-check-enabled: true;   // startup new-version check (#184)
+    callback set-update-check-enabled(bool);       // apply + persist
     // Drag-resizable width of that welcome sidebar (logical px), persisted.
     in-out property <length> welcome-sidebar-width: 240px;
     callback persist-welcome-sidebar-width(float);
@@ -555,6 +559,7 @@ export component AppWindow inherits Window {
     in-out property <string> dialog-parity: "none";
     in-out property <string> dialog-flow: "none";
     in-out property <bool> dialog-disable-shell-integration: false;
+    in-out property <string> dialog-note;
 
     // Delete-confirmation modal state (#28).
     in-out property <bool> confirm-delete-open: false;
@@ -902,6 +907,7 @@ export component AppWindow inherits Window {
             lay-horizontal: !root.sidebar-horizontal;
             dock-edge: root.sidebar-dock;
             connection-state: root.connection-state;
+            conn-host: root.conn-host;
             conn-state: root.conn-state;
             resource-title: root.resource-title;
             cpu-percent: root.cpu-percent;
@@ -923,6 +929,7 @@ export component AppWindow inherits Window {
             app-version: root.app-version;
             select-net-iface(i) => { root.select-net-iface(i); }
             show-processes() => { root.open-processes(); }
+            copy-host(h) => { root.copy-text(h); }   // reuse the clipboard helper (#192)
             // Drag the sidebar header to dock it to another edge. Coordinates
             // arrive in window space; convert to dock-area-relative fractions.
             dock-drag-move(ax, ay) => {
@@ -2215,12 +2222,12 @@ export component AppWindow inherits Window {
                         accepted => {
                             if (root.qcm-name != "" && root.qcm-command != "") {
                                 if (root.qcm-edit-index >= 0) {
-                                    root.save-quick-command(root.qcm-edit-index, root.qcm-name, root.qcm-command, root.qcm-group);
+                                    root.save-quick-command(root.qcm-edit-index, root.qcm-name, root.qcm-command, root.qcm-group, root.qcm-send-enter);
                                 } else {
-                                    root.add-quick-command(root.qcm-name, root.qcm-command, root.qcm-group);
+                                    root.add-quick-command(root.qcm-name, root.qcm-command, root.qcm-group, root.qcm-send-enter);
                                 }
                                 root.qcm-edit-index = -1;
-                                root.qcm-name = ""; root.qcm-command = ""; root.qcm-group = "";
+                                root.qcm-name = ""; root.qcm-command = ""; root.qcm-group = ""; root.qcm-send-enter = true;
                             }
                         }
                     }
@@ -2229,7 +2236,7 @@ export component AppWindow inherits Window {
                         text: root.lang-en ? "Cancel" : "取消";
                         clicked => {
                             root.qcm-edit-index = -1;
-                            root.qcm-name = ""; root.qcm-command = ""; root.qcm-group = "";
+                            root.qcm-name = ""; root.qcm-command = ""; root.qcm-group = ""; root.qcm-send-enter = true;
                         }
                     }
                     Button {
@@ -2239,14 +2246,23 @@ export component AppWindow inherits Window {
                         enabled: root.qcm-name != "" && root.qcm-command != "";
                         clicked => {
                             if (root.qcm-edit-index >= 0) {
-                                root.save-quick-command(root.qcm-edit-index, root.qcm-name, root.qcm-command, root.qcm-group);
+                                root.save-quick-command(root.qcm-edit-index, root.qcm-name, root.qcm-command, root.qcm-group, root.qcm-send-enter);
                             } else {
-                                root.add-quick-command(root.qcm-name, root.qcm-command, root.qcm-group);
+                                root.add-quick-command(root.qcm-name, root.qcm-command, root.qcm-group, root.qcm-send-enter);
                             }
                             root.qcm-edit-index = -1;
-                            root.qcm-name = ""; root.qcm-command = ""; root.qcm-group = "";
+                            root.qcm-name = ""; root.qcm-command = ""; root.qcm-group = ""; root.qcm-send-enter = true;
                         }
                     }
+                }
+
+                // Whether a click sends+executes or just fills the input box to
+                // tweak first (B站 suggestion).
+                CheckBox {
+                    text: root.lang-en
+                        ? "Send + run on click (off: fill input box only)"
+                        : "点击即发送执行(关闭则只填入输入框,可修改后再发)";
+                    checked <=> root.qcm-send-enter;
                 }
 
                 // New (empty) group.
@@ -2963,6 +2979,7 @@ export component AppWindow inherits Window {
         draft-parity <=> root.dialog-parity;
         draft-flow <=> root.dialog-flow;
         draft-disable-shell-integration <=> root.dialog-disable-shell-integration;
+        draft-note <=> root.dialog-note;
         forwards: root.dialog-forwards;
         submit(draft) => { root.session-dialog-submit(draft); }
         cancel => { root.session-dialog-cancel(); }
@@ -3262,7 +3279,9 @@ export component AppWindow inherits Window {
             // Bigger base, and scales with the settings font size (#v0.5).
             width: 720px * Theme.panel-font;
             height: 480px * Theme.panel-font;
-            background: Theme.bg-panel;
+            // 20% less transparent than the welcome/resource panels so the dense
+            // grey settings labels stay readable at a low overlay (user request).
+            background: Theme.bg-panel-strong;
             border-radius: Theme.radius-md;
             border-width: 1px;
             border-color: Theme.border-strong;
@@ -3275,7 +3294,11 @@ export component AppWindow inherits Window {
                 // Title bar — drag to move (clamped inside the window).
                 Rectangle {
                     height: 44px;
-                    background: Theme.bg-elevated;
+                    // Transparent so the card's single frosted layer shows through
+                    // — no extra stacked opacity, matching the welcome/resource
+                    // panels and following the wallpaper slider (#new-user-defaults
+                    // items 6/7). The 1px divider below still separates it.
+                    background: transparent;
                     title-drag := TouchArea {
                         mouse-cursor: move;
                         pointer-event(e) => {
@@ -3343,6 +3366,7 @@ export component AppWindow inherits Window {
                     sync-upload-enabled <=> root.sync-upload-enabled;
                     download-always-ask <=> root.download-always-ask;
                     welcome-as-sidebar <=> root.welcome-as-sidebar;
+                    update-check-enabled <=> root.update-check-enabled;
                     wallpaper-overlay <=> root.wallpaper-overlay;
                     current-wallpaper: root.current-wallpaper;
                     custom-wallpaper-name: root.custom-wallpaper-name;
@@ -3358,6 +3382,7 @@ export component AppWindow inherits Window {
                     set-sync-upload-enabled(v) => { root.set-sync-upload-enabled(v); }
                     set-download-always-ask(v) => { root.set-download-always-ask(v); }
                     set-welcome-as-sidebar(v) => { root.set-welcome-as-sidebar(v); }
+                    set-update-check-enabled(v) => { root.set-update-check-enabled(v); }
                     persist-wallpaper-overlay(v) => { root.persist-wallpaper-overlay(v); }
                 }
             }

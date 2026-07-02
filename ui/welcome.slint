@@ -312,10 +312,18 @@ export component Welcome inherits Rectangle {
                         font-size: Theme.fs-sm;
                         vertical-alignment: center;
                     }
-                    PrimaryButton {
+                    // Full page (wide) → the button sits inline on the header row.
+                    if !root.compact : PrimaryButton {
                         text: @tr("+ New session");
                         clicked => { root.new-session(); }
                     }
+                }
+                // Sidebar (compact) → the New-session button gets its own
+                // full-width row, so it never overflows the narrow sidebar and
+                // its label stays centred without resizing (#187-1).
+                if root.compact : PrimaryButton {
+                    text: @tr("+ New session");
+                    clicked => { root.new-session(); }
                 }
 
                 if sessions.length == 0 : Rectangle {

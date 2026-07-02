@@ -31,6 +31,8 @@ export struct SessionDraft {
     // Skip the POSIX shell-integration setup (cwd-follow hook + monitor) for
     // Windows / pwsh servers where it breaks the shell (#140).
     disable-shell-integration: bool,
+    // Free-form note (B站 suggestion).
+    note: string,
 }
 
 // A single segment in a segmented selector (auth toggle, baud presets, …).
@@ -219,6 +221,7 @@ export component SessionDialog inherits Rectangle {
     in-out property <string> draft-parity: "none";
     in-out property <string> draft-flow: "none";
     in-out property <bool> draft-disable-shell-integration: false;
+    in-out property <string> draft-note;
 
     // Port forwards / tunnels (#56). `forwards` is the current list (fed from
     // Rust); the nf-* properties hold the add-form fields.
@@ -327,6 +330,13 @@ export component SessionDialog inherits Rectangle {
                 placeholder: @tr("e.g. Production / Database");
                 value <=> root.draft-group;
                 groups: root.session-groups;
+            }
+
+            // Free-form note — extra info to keep with the session (B站 suggestion).
+            LabeledInput {
+                label: @tr("Note (optional)");
+                placeholder: @tr("Anything to remember about this host");
+                value <=> root.draft-note;
             }
 
             // ── SSH / Telnet share host + port ──────────────────────────────
@@ -732,6 +742,7 @@ export component SessionDialog inherits Rectangle {
                             parity: root.draft-parity,
                             flow-control: root.draft-flow,
                             disable-shell-integration: root.draft-disable-shell-integration,
+                            note: root.draft-note,
                         });
                     }
                 }

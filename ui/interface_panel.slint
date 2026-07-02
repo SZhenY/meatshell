@@ -186,6 +186,7 @@ export component InterfacePanel inherits Rectangle {
     in-out property <bool> sync-upload-enabled;
     in-out property <bool> download-always-ask;
     in-out property <bool> welcome-as-sidebar;
+    in-out property <bool> update-check-enabled;
     in-out property <float> wallpaper-overlay;   // frosted-panel opacity 0.40–1.00
     // Active wallpaper id: "" / "builtin:light" / "builtin:dark" / a file path.
     in property <string> current-wallpaper;
@@ -194,7 +195,8 @@ export component InterfacePanel inherits Rectangle {
     property <string> ifd-page: "font";
     property <bool> wp-is-custom:
         root.current-wallpaper != "" && root.current-wallpaper != "builtin:light"
-        && root.current-wallpaper != "builtin:dark";
+        && root.current-wallpaper != "builtin:dark" && root.current-wallpaper != "builtin:tech"
+        && root.current-wallpaper != "builtin:miku";
 
     callback set-term-font(string);
     callback set-term-font-size(int);
@@ -206,6 +208,7 @@ export component InterfacePanel inherits Rectangle {
     callback set-sync-upload-enabled(bool);
     callback set-download-always-ask(bool);
     callback set-welcome-as-sidebar(bool);
+    callback set-update-check-enabled(bool);   // startup new-version check (#184)
     callback persist-wallpaper-overlay(float);   // save the overlay opacity
     callback set-wallpaper(string);    // none / builtin selection
     callback pick-wallpaper-file();    // open the OS file dialog (Rust)
@@ -214,7 +217,13 @@ export component InterfacePanel inherits Rectangle {
         // --- Left nav ------------------------------------------------------
         Rectangle {
             width: 168px;
-            background: Theme.bg-panel-alt;
+            // Transparent so the whole dialog is one frosted layer (the card's
+            // bg-panel); a 1px divider keeps the nav/content separation (items 6/7).
+            background: transparent;
+            Rectangle {
+                x: parent.width - 1px; width: 1px; height: parent.height;
+                background: Theme.border-subtle;
+            }
             VerticalLayout {
                 padding: 10px;
                 spacing: 2px;
@@ -254,12 +263,20 @@ export component InterfacePanel inherits Rectangle {
                     active: root.ifd-page == "download";
                     clicked => { root.ifd-page = "download"; }
                 }
+                NavItem {
+                    icon: "\u{E923}"; label: root.lang-en ? "Update check" : "新版本提示";
+                    active: root.ifd-page == "update";
+                    clicked => { root.ifd-page = "update"; }
+                }
             }
         }
         // --- Right content -------------------------------------------------
         Rectangle {
             horizontal-stretch: 1;
-            background: Theme.bg-panel;
+            // Transparent: the card's single bg-panel frost shows through, so the
+            // settings panel matches the welcome/resource panels and tracks the
+            // wallpaper-opacity slider (items 6/7).
+            background: transparent;
 
             // --- Font page ---------------------------------------------
             if root.ifd-page == "font" : VerticalLayout {
@@ -432,6 +449,21 @@ export component InterfacePanel inherits Rectangle {
                         Text { text: root.lang-en ? "Fantasy 3048" : "幻想3048"; font-size: 11px * Theme.panel-font;
                                color: Theme.text-secondary; horizontal-alignment: center; }
                     }
+                    VerticalLayout {
+                        spacing: 5px;
+                        WallpaperSwatch {
+                            width: 100px;
+                            selected: root.current-wallpaper == "builtin:miku";
+                            clicked => { root.set-wallpaper("builtin:miku"); }
+                            Image {
+                                width: 100%; height: 100%;
+                                source: @image-url("../assets/miku.jpg");
+                                image-fit: cover;
+                            }
+                        }
+                        Text { text: "Miku"; font-size: 11px * Theme.panel-font;
+                               color: Theme.text-secondary; horizontal-alignment: center; }
+                    }
                 }
 
                 Rectangle { height: 16px; }
@@ -500,7 +532,9 @@ export component InterfacePanel inherits Rectangle {
                         Slider {
                             width: 150px;
                             minimum: 0;
-                            maximum: 60;
+                            // Up to 70% transparency (overlay floor 0.30) so the
+                            // 0.38 default (62%) and more see-through panels fit.
+                            maximum: 70;
                             value: (1.0 - root.wallpaper-overlay) * 100;
                             changed(v) => { root.wallpaper-overlay = 1.0 - v / 100; }
                             released(v) => { root.persist-wallpaper-overlay(1.0 - v / 100); }
@@ -631,6 +665,27 @@ export component InterfacePanel inherits Rectangle {
                     Switch {
                         on: root.download-always-ask;
                         toggled(v) => { root.download-always-ask = v; root.set-download-always-ask(v); }
+                    }
+                }
+            }
+
+            // --- Update check page (#184) ------------------------------
+            if root.ifd-page == "update" : VerticalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                padding-top: 14px;
+                spacing: 0;
+                alignment: start;
+                SectionHeader { text: root.lang-en ? "UPDATE CHECK" : "新版本提示"; height: 24px; }
+                SettingRow {
+                    label: root.lang-en ? "Check for new versions on startup" : "启动时检查新版本";
+                    desc: root.lang-en
+                        ? "Off: meatshell no longer queries GitHub for releases and the update banner won't appear (takes effect next launch)."
+                        : "关闭后:不再向 GitHub 查询新版本,也不会弹出更新提示(下次启动生效)。";
+                    show-divider: false;
+                    Switch {
+                        on: root.update-check-enabled;
+                        toggled(v) => { root.update-check-enabled = v; root.set-update-check-enabled(v); }
                     }
                 }
             }

@@ -407,3 +407,6 @@ msgstr "关闭标签页"
 
 msgid "Duplicate connection"
 msgstr "复制打开"
+
+msgid "Copied"
+msgstr "已复制"

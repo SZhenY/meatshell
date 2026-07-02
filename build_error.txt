@@ -1,0 +1,5 @@
+   Compiling meatshell v0.5.0 (F:\rust\meatshell)
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\F:\rust\meatshell\target\debug\incremental\meatshell-2vf7gimx6rq9l\s-hjzazk0ua4-1wgv6u2-working`
+
+warning: `meatshell` (bin "meatshell") generated 1 warning
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2m 02s
